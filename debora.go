@@ -13,12 +13,13 @@ var (
 	HomeDir             = homeDir()
 	GoPath              = os.Getenv("GOPATH")
 	DeboraRoot          = path.Join(HomeDir, ".debora")
+	DeboraConfig        = path.Join(DeboraRoot, "config.json")
 	DeboraBin           = path.Join(GoPath, "bin", "debora")
 	DeboraSrcPath       = path.Join(GoPath, "src", "github.com", "ebuchman", "debora")
 	DeboraCmdPath       = path.Join(DeboraSrcPath, "cmd", "debora")
 	DeboraHost          = "localhost:56565" // local debora daemon
 	DeveloperDeboraHost = "0.0.0.0:8009"    // developer's debora for this app
-	DebMasterHost       = "localhost:56567" // developer's debora in process with app
+	DebMasterHost       = "localhost:56566" // developer's debora in process with app
 )
 
 // Debra interface from caller is two functions:
@@ -114,10 +115,13 @@ func DebMasterListenAndServe(appName string, callFunc func(payload []byte)) {
 // Run a temporary server on the developer's machine to respond to
 // authentication requests from clients
 // Started by `debora call`.
-func DeveloperListenAndServe(host string) error {
-	deb := DeveloperDebora{}
+func DeveloperListenAndServe(host, priv string) error {
+	deb := DeveloperDebora{
+		priv: priv,
+	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/", deb.fuck)
 	mux.HandleFunc("/handshake", deb.handshake)
 	log.Println("Developer debora listening on", host)
 	if err := http.ListenAndServe(host, mux); err != nil {

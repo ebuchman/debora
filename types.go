@@ -37,7 +37,7 @@ type RequestObj struct {
 }
 
 type Config struct {
-	Apps []App
+	Apps map[string]App
 }
 
 type App struct {
@@ -46,4 +46,6 @@ type App struct {
 	PrivateKey string `json:"private_key"`
 }
 
-var GlobalConfig = Config{[]App{App{}}}
+var GlobalConfig = Config{
+	Apps: make(map[string]App),
+}

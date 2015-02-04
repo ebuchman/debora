@@ -52,26 +52,42 @@ func init() {
 	}
 
 	// make or load config file
-	configFile := path.Join(DeboraRoot, "config.json")
+	configFile := DeboraConfig
 	if _, err := os.Stat(configFile); err != nil {
-		b, err := json.Marshal(GlobalConfig)
-		if err != nil {
-			log.Fatal("Error marshalling global config", err)
-		}
-		err = ioutil.WriteFile(configFile, b, 0600)
-		if err != nil {
-			log.Fatal("Error writing configuration to file", err)
+		if err := WriteConfig(configFile); err != nil {
+			log.Fatal("Write config err:", err)
 		}
 	} else {
-		b, err := ioutil.ReadFile(configFile)
-		if err != nil {
-			log.Fatal("Couldn't read config file:", err)
-		}
-		err = json.Unmarshal(b, &GlobalConfig)
-		if err != nil {
-			log.Fatal("Error unmarshalling config:", err)
+		if err := LoadConfig(configFile); err != nil {
+			log.Fatal("Load config err:", err)
 		}
 	}
+}
+
+// Write the global config struct to file
+func WriteConfig(configFile string) error {
+	b, err := json.Marshal(GlobalConfig)
+	if err != nil {
+		return err
+	}
+	err = ioutil.WriteFile(configFile, b, 0600)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Load the global config struct from file
+func LoadConfig(configFile string) error {
+	b, err := ioutil.ReadFile(configFile)
+	if err != nil {
+		return err
+	}
+	err = json.Unmarshal(b, &GlobalConfig)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // http json request and response
@@ -99,6 +115,7 @@ func RequestResponse(host, method string, body []byte) ([]byte, error) {
 	return contents, nil
 }
 
+// Check is a process is running
 func CheckValidProcess(pid int) (*os.Process, error) {
 	proc, err := os.FindProcess(pid)
 	if err != nil {

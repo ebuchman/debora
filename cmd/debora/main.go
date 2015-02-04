@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"time"
 )
 
 func main() {
@@ -66,6 +67,16 @@ func cliCall(c *cli.Context) {
 	listenHost := c.String("listen-host")
 	listenPort := c.Int("listen-port")
 
+	args := c.Args()
+	if len(args) == 0 {
+		ifExit(fmt.Errorf("Please provide the name of the application as an argument"))
+	}
+	name := args[0]
+	app, ok := debora.GlobalConfig.Apps[name]
+	if !ok {
+		ifExit(fmt.Errorf("Unknown application %s", name))
+	}
+
 	remote := remoteHost + ":" + strconv.Itoa(remotePort)
 	listen := listenHost + ":" + strconv.Itoa(listenPort)
 
@@ -76,15 +87,22 @@ func cliCall(c *cli.Context) {
 	b, err := json.Marshal(reqObj)
 	ifExit(err)
 
+	priv := app.PrivateKey
+	// listen and serve
+	go func() {
+		err = debora.DeveloperListenAndServe(listen, priv)
+		ifExit(err)
+	}()
+
 	log.Println("Triggering broadcast with request to:", remote)
 	// trigger the broadcast with an http request
 	_, err = debora.RequestResponse("http://"+remote, "call", b)
 	ifExit(err)
 
-	// listen and serve
-	// blocks forever
-	err = debora.DeveloperListenAndServe(listen)
-	ifExit(err)
+	for {
+		time.Sleep(time.Second)
+	}
+
 }
 
 func cliKeygen(c *cli.Context) {

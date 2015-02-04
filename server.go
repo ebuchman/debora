@@ -99,9 +99,9 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Println("ready to handshake")
 	// handshake with developer:
-	var host string //todo
+	host := reqObj.Host
+	log.Println("ready to handshake with", host)
 	ok, err = handshake(key, host)
 	log.Println("handshake:", ok, err)
 	if err != nil {
@@ -164,6 +164,7 @@ func (deb *DebMaster) call(w http.ResponseWriter, r *http.Request) {
 */
 
 func (deb *DeveloperDebora) handshake(w http.ResponseWriter, r *http.Request) {
+	log.Println("Received handshake request from", r.RemoteAddr)
 	// read the request, unmarshal json
 	cipherText, err := ioutil.ReadAll(r.Body)
 	if err != nil {

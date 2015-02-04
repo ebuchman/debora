@@ -142,6 +142,7 @@ func handshake(key, host string) (bool, error) {
 	}
 
 	// send encrypted nonce to developer
+	log.Println("sending nonce to dev:", host)
 	response, err := RequestResponse("http://"+host, "handshake", cipherText)
 	if err != nil {
 		return false, err

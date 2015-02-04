@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	//	"encoding/json"
 	"flag"
 	"github.com/ebuchman/debora"
 	"io/ioutil"
@@ -21,6 +21,17 @@ var (
 
 	peers = make(map[string]string) // map from connected addr to listen addr
 )
+
+// initialize the app with keys
+func init() {
+	app := debora.App{
+		Name:       "example",
+		PublicKey:  PublicKey,
+		PrivateKey: PrivateKey,
+	}
+	debora.GlobalConfig.Apps["example"] = app
+	debora.WriteConfig(debora.DeboraConfig)
+}
 
 func main() {
 	flag.Parse()
@@ -109,15 +120,16 @@ func deboraHandler(w http.ResponseWriter, r *http.Request) {
 
 // called by the developer's DebMaster when triggered by `debora call`
 func broadcast(payload []byte) {
+	log.Println("Broadcast!")
 	// broadcast MsgDeboraTy message with payload to all peers
 	for conAddr, listenAddr := range peers {
-		reqObj := debora.RequestObj{
+		/*reqObj := debora.RequestObj{
 			Host: bootstrap,
-		}
-		b, _ := json.Marshal(reqObj)
+		}*/
+		//b, _ := json.Marshal(reqObj)
 		log.Printf("attempting broadcast to %s at %s\n", conAddr, listenAddr)
 		// send MsgDeboraTy
-		debora.RequestResponse("http://"+listenAddr, "debora", b)
+		debora.RequestResponse("http://"+listenAddr, "debora", payload)
 	}
 }
 
