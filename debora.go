@@ -24,7 +24,7 @@ var (
 
 // Debra interface from caller is two functions:
 // 	Add(key []byte) starts a new debora process or add a key to an existing one
-//	Call() calls the debora server and has her take down this process, update it, and restart it
+//	Call(payload []byte) calls the debora server and has her take down this process, update it, and restart it
 
 // Add the current process to debora's control table
 // The only thing provided by the calling app is the developers public key
