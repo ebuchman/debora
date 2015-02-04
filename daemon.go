@@ -15,7 +15,7 @@ import (
 
 // check if the debora server is running
 func isDeboraRunning() bool {
-	_, err := RequestResponse(DeboraHost, "ping", nil)
+	_, err := RequestResponse("http://"+DeboraHost, "ping", nil)
 	if err != nil {
 		log.Println(err)
 		return false
@@ -28,13 +28,15 @@ func isDeboraRunning() bool {
 // block until she starts
 func startDebora() error {
 	// if debora is not installed, install her
-	if _, err := os.Stat(DeboraCmdPath); err != nil {
-		if err = installDebora(); err != nil {
-			return err
-		}
+	//if _, err := os.Stat(DeboraBin); err != nil {
+	if err := installDebora(); err != nil {
+		return err
 	}
+	//}
 
-	cmd := exec.Command(DeboraCmdPath, "run")
+	cmd := exec.Command(DeboraBin, "run")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -49,18 +51,21 @@ func startDebora() error {
 
 // install the debora binary (server)
 func installDebora() error {
+	log.Println("Installing debora ...")
 	cur, _ := os.Getwd()
-	os.Chdir(DeboraCmdPath)
+	if err := os.Chdir(DeboraCmdPath); err != nil {
+		return err
+	}
 	cmd := exec.Command("go", "get", "-d")
 	if err := cmd.Run(); err != nil {
 		return err
 	}
-
-	cmd = exec.Command("go", "install")
+	cmd = exec.Command("go", "install", "-v")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return err
 	}
-
 	os.Chdir(cur)
 	return nil
 }
@@ -78,7 +83,8 @@ func deboraAdd(key, name string, pid int, args []string) error {
 	if err != nil {
 		return err
 	}
-	_, err = RequestResponse(DeboraHost, "add", b)
+	log.Println("deboraAdd:", pid, key)
+	_, err = RequestResponse("http://"+DeboraHost, "add", b)
 	return err
 }
 
@@ -92,7 +98,7 @@ func callDebora(pid int, host string) error {
 	if err != nil {
 		return err
 	}
-	_, err = RequestResponse(DeboraHost, "call", b)
+	_, err = RequestResponse("http://"+DeboraHost, "call", b)
 	return err
 }
 
@@ -104,12 +110,12 @@ func knownDeb(pid int) bool {
 		log.Println(err)
 		return false
 	}
-	b, err = RequestResponse(DeboraHost, "known", b)
+	b, err = RequestResponse("http://"+DeboraHost, "known", b)
 	if err != nil {
 		log.Println(err)
 		return false
 	}
-	if b == nil {
+	if b == nil || len(b) == 0 {
 		return false
 	}
 	return true
@@ -136,7 +142,7 @@ func handshake(key, host string) (bool, error) {
 	}
 
 	// send encrypted nonce to developer
-	response, err := RequestResponse(host, "handshake", cipherText)
+	response, err := RequestResponse("http://"+host, "handshake", cipherText)
 	if err != nil {
 		return false, err
 	}

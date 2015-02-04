@@ -14,7 +14,7 @@ var (
 	GoPath              = os.Getenv("GOPATH")
 	DeboraRoot          = path.Join(HomeDir, ".debora")
 	DeboraBin           = path.Join(GoPath, "bin", "debora")
-	DeboraSrcPath       = path.Join(GoPath, "github.com", "ebuchman", "debora")
+	DeboraSrcPath       = path.Join(GoPath, "src", "github.com", "ebuchman", "debora")
 	DeboraCmdPath       = path.Join(DeboraSrcPath, "cmd", "debora")
 	DeboraHost          = "localhost:56565" // local debora daemon
 	DeveloperDeboraHost = "0.0.0.0:8009"    // developer's debora for this app
@@ -86,6 +86,7 @@ func DeboraListenAndServe() error {
 	mux.HandleFunc("/add", deb.add)
 	mux.HandleFunc("/call", deb.call)
 	mux.HandleFunc("/known", deb.known)
+	log.Println("Debora listening on:", DeboraHost)
 	if err := http.ListenAndServe(DeboraHost, mux); err != nil {
 		return err
 	}
@@ -103,6 +104,7 @@ func DebMasterListenAndServe(appName string, callFunc func(payload []byte)) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/call", deb.call)
 	go func() {
+		log.Println("DebMaster listening on", DebMasterHost)
 		if err := http.ListenAndServe(DebMasterHost, mux); err != nil {
 			log.Println("Error on deb master listen:", err)
 		}
@@ -117,6 +119,7 @@ func DeveloperListenAndServe(host string) error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/handshake", deb.handshake)
+	log.Println("Developer debora listening on", host)
 	if err := http.ListenAndServe(host, mux); err != nil {
 		return err
 	}

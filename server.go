@@ -66,6 +66,7 @@ func (deb *Debora) known(w http.ResponseWriter, r *http.Request) {
 
 // Call debora to take down a process, upgrade it, and restart
 func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
+	log.Println("In Call!")
 	// read the request, unmarshal json
 	p, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -82,6 +83,7 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 	// check if process is real
 	// by sending it the 0 signal
 	pid := reqObj.Pid
+	log.Println("process id:", pid)
 	var proc *os.Process
 	if proc, err = CheckValidProcess(pid); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -89,6 +91,8 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key, ok := deb.debKeys[pid]
+	log.Println("Key:", key)
+	log.Println(deb.debKeys)
 	if !ok {
 		// TODO: respond (debora) unknown process id!
 		http.Error(w, fmt.Sprintf("Unknown process id %d", pid), http.StatusInternalServerError)
@@ -99,6 +103,7 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 	// handshake with developer:
 	var host string //todo
 	ok, err = handshake(key, host)
+	log.Println("handshake:", ok, err)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -139,12 +144,14 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 */
 
 func (deb *DebMaster) call(w http.ResponseWriter, r *http.Request) {
+	log.Println("Received call request on DebMaster")
 	// read the request, unmarshal json
 	payload, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	log.Println("Issuing broadcast")
 	// broadcast the upgrade message to all the peers
 	// the payload is json encoded RequestObj
 	// but probably only the Host field is filled in

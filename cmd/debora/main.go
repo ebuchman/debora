@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/codegangsta/cli"
 	"github.com/ebuchman/debora"
 	"log"
@@ -10,6 +11,7 @@ import (
 )
 
 func main() {
+	log.Printf("New Debora Process (PID: %d)\n", os.Getpid())
 	app := cli.NewApp()
 	app.Name = "debora"
 	app.Usage = ""
@@ -74,8 +76,9 @@ func cliCall(c *cli.Context) {
 	b, err := json.Marshal(reqObj)
 	ifExit(err)
 
+	log.Println("Triggering broadcast with request to:", remote)
 	// trigger the broadcast with an http request
-	_, err = debora.RequestResponse(remote, "call", b)
+	_, err = debora.RequestResponse("http://"+remote, "call", b)
 	ifExit(err)
 
 	// listen and serve
@@ -85,12 +88,23 @@ func cliCall(c *cli.Context) {
 }
 
 func cliKeygen(c *cli.Context) {
+	/*	args := c.Args()
+		if len(args) == 0 {
+			log.Fatal("Must provide at least one argument (the app's name)")
+		}
+		name := args[0]*/
+	key, err := debora.GenerateKey()
+	ifExit(err)
+	priv, pub, err := debora.EncodeKey(key)
+	ifExit(err)
+	fmt.Println("Private Key:", priv)
+	fmt.Println("Public Key:", pub)
 }
 
 var (
 	listenHostFlag = cli.StringFlag{
 		Name:  "listen-host, lh",
-		Value: "http://0.0.0.0",
+		Value: "0.0.0.0",
 		Usage: "listen address for authentication requests from clients seeking to upgrade",
 	}
 
@@ -102,7 +116,7 @@ var (
 
 	remoteHostFlag = cli.StringFlag{
 		Name:  "remote-host, rh",
-		Value: "http://localhost",
+		Value: "localhost",
 		Usage: "remote address to trigger broadcast of upgrade message",
 	}
 
