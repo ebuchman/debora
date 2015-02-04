@@ -10,6 +10,12 @@ import (
 	"fmt"
 )
 
+/*
+	Basic crypto ops for RSA encryption and HMAC
+	All strings are hex encoded DER (encoding provided by x509 package)
+*/
+
+// Generate a new 2048 bit RSA key
 func GenerateKey() (*rsa.PrivateKey, error) {
 	k, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -18,6 +24,7 @@ func GenerateKey() (*rsa.PrivateKey, error) {
 	return k, nil
 }
 
+// Returns hex encoded DER of private and public key
 func EncodeKey(k *rsa.PrivateKey) (string, string, error) {
 	privbytes := x509.MarshalPKCS1PrivateKey(k)
 	privHex := hex.EncodeToString(privbytes)
@@ -30,6 +37,7 @@ func EncodeKey(k *rsa.PrivateKey) (string, string, error) {
 	return privHex, pubHex, nil
 }
 
+// Decodes hex encoded DER private key to native type
 func DecodePrivateKey(privHex string) (*rsa.PrivateKey, error) {
 	privBytes, err := hex.DecodeString(privHex)
 	if err != nil {
@@ -43,6 +51,7 @@ func DecodePrivateKey(privHex string) (*rsa.PrivateKey, error) {
 
 }
 
+// Decodes hex encoded DER public key to native type
 func DecodePublicKey(pubHex string) (*rsa.PublicKey, error) {
 	pubBytes, err := hex.DecodeString(pubHex)
 	if err != nil {
@@ -59,7 +68,7 @@ func DecodePublicKey(pubHex string) (*rsa.PublicKey, error) {
 	return pub, nil
 }
 
-// takes hex encoded DER public key
+// Takes hex encoded DER public key and attempt to encrypt msg
 func Encrypt(pubHex string, msg []byte) ([]byte, error) {
 	pub, err := DecodePublicKey(pubHex)
 	if err != nil {
@@ -72,7 +81,7 @@ func Encrypt(pubHex string, msg []byte) ([]byte, error) {
 	return cipherText, nil
 }
 
-// takes hex encoded DER private key
+// Takes hex encoded DER private key and attempts to decrypt cipherText
 func Decrypt(privHex string, cipherText []byte) ([]byte, error) {
 	priv, err := DecodePrivateKey(privHex)
 	if err != nil {
@@ -85,7 +94,7 @@ func Decrypt(privHex string, cipherText []byte) ([]byte, error) {
 	return plainText, nil
 }
 
-// hmac signature
+// Produce an hmac signature
 func SignMAC(message, key []byte) []byte {
 	mac := hmac.New(sha1.New, key)
 	mac.Write(message)

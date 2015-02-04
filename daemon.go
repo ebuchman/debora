@@ -15,7 +15,7 @@ import (
 
 // check if the debora server is running
 func isDeboraRunning() bool {
-	_, err := requestResponse(DeboraHost, "ping", nil)
+	_, err := RequestResponse(DeboraHost, "ping", nil)
 	if err != nil {
 		log.Println(err)
 		return false
@@ -66,27 +66,33 @@ func installDebora() error {
 }
 
 // add a process to debora
-func deboraAdd(key string, pid int) error {
+func deboraAdd(key, name string, pid int, args []string) error {
 	reqObj := RequestObj{
-		Key: key,
-		Pid: pid,
+		Key:  key,
+		Pid:  pid,
+		Args: args,
+		App:  name,
+		//Host: host,
 	}
 	b, err := json.Marshal(reqObj)
 	if err != nil {
 		return err
 	}
-	_, err = requestResponse(DeboraHost, "add", b)
+	_, err = RequestResponse(DeboraHost, "add", b)
 	return err
 }
 
 // initiate the debora call
-func callDebora(pid int) error {
-	reqObj := RequestObj{Pid: pid}
+func callDebora(pid int, host string) error {
+	reqObj := RequestObj{
+		Pid:  pid,
+		Host: host,
+	}
 	b, err := json.Marshal(reqObj)
 	if err != nil {
 		return err
 	}
-	_, err = requestResponse(DeboraHost, "call", b)
+	_, err = RequestResponse(DeboraHost, "call", b)
 	return err
 }
 
@@ -98,7 +104,7 @@ func knownDeb(pid int) bool {
 		log.Println(err)
 		return false
 	}
-	b, err = requestResponse(DeboraHost, "known", b)
+	b, err = RequestResponse(DeboraHost, "known", b)
 	if err != nil {
 		log.Println(err)
 		return false
@@ -129,8 +135,8 @@ func handshake(key, host string) (bool, error) {
 		return false, err
 	}
 
-	// send message to developer
-	response, err := requestResponse(host, "handshake", cipherText)
+	// send encrypted nonce to developer
+	response, err := RequestResponse(host, "handshake", cipherText)
 	if err != nil {
 		return false, err
 	}

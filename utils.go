@@ -11,6 +11,7 @@ import (
 	"os/user"
 	"path"
 	"strconv"
+	"syscall"
 )
 
 // get the user's home directory
@@ -22,9 +23,14 @@ func homeDir() string {
 	return usr.HomeDir
 }
 
+var ARGS = []string{}
+
 // initalize the debora library by getting the root directory
 // and the daemon's host address
 func init() {
+	// grab the arguments (so we can use them later, incase os.Args is modified)
+	ARGS = append(ARGS, os.Args...)
+
 	// configure root dir location
 	deboraDir := os.Getenv("DEBORA_ROOT")
 	if deboraDir != "" {
@@ -69,7 +75,7 @@ func init() {
 }
 
 // http json request and response
-func requestResponse(host, method string, body []byte) ([]byte, error) {
+func RequestResponse(host, method string, body []byte) ([]byte, error) {
 	req, err := http.NewRequest("POST", host+"/"+method, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
@@ -91,4 +97,16 @@ func requestResponse(host, method string, body []byte) ([]byte, error) {
 		return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, contents)
 	}
 	return contents, nil
+}
+
+func CheckValidProcess(pid int) (*os.Process, error) {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return nil, err
+	}
+	err = proc.Signal(syscall.Signal(0))
+	if err != nil {
+		return nil, fmt.Errorf("Invalid process id %d", pid)
+	}
+	return proc, nil
 }

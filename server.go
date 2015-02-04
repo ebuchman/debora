@@ -2,15 +2,17 @@ package debora
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 )
 
 /*
 	There are three debora servers:
 	1. Client side daemon (stand alone process on client machine)
-	2. Developer side in-process (wait for develoepr to trigger broadcast)
+	2. Developer side in-process with app (waits for develoepr to trigger broadcast)
 	3. Developer side call daemon (communicates with clients once they have begun the call sequence)
 */
 
@@ -40,6 +42,7 @@ func (deb *Debora) add(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	// TODO: check if pid corresponds to real process
+
 	// TODO: check key is appropriate length
 	deb.debKeys[reqObj.Pid] = reqObj.Key
 }
@@ -75,12 +78,24 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// TODO: check pid is real process
-	key, ok := deb.debKeys[reqObj.Pid]
-	if !ok {
-		// TODO: respond unknown process id!
+
+	// check if process is real
+	// by sending it the 0 signal
+	pid := reqObj.Pid
+	var proc *os.Process
+	if proc, err = CheckValidProcess(pid); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
+	key, ok := deb.debKeys[pid]
+	if !ok {
+		// TODO: respond (debora) unknown process id!
+		http.Error(w, fmt.Sprintf("Unknown process id %d", pid), http.StatusInternalServerError)
+		return
+	}
+
+	log.Println("ready to handshake")
 	// handshake with developer:
 	var host string //todo
 	ok, err = handshake(key, host)
@@ -89,15 +104,32 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
+		// TODO: respond signal from invalid dev
 		log.Println("Signal from invalid developer")
 		return
 	}
-	// the signal has been authenticated
-	// terminate the process
 
-	// kill process
-	// git pull and go install
-	// restart process
+	// the signal has been authenticated
+	log.Println("the signal is authentic!")
+
+	// TODO: upgrade the binary
+
+	// terminate the process
+	err = proc.Signal(os.Interrupt)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_, err = proc.Wait()
+	if err != nil {
+		// TODO: the process may be done now but some other error has
+		// occured. We need to bring it back up!
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// TODO: restart process
 
 }
 
@@ -107,12 +139,39 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 */
 
 func (deb *DebMaster) call(w http.ResponseWriter, r *http.Request) {
+	// read the request, unmarshal json
+	payload, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	// broadcast the upgrade message to all the peers
-	payload := []byte("A") // TODO
+	// the payload is json encoded RequestObj
+	// but probably only the Host field is filled in
 	deb.callFunc(payload)
 }
 
 /*
 	3. Developer side call daemon routes:
-	-
+	- handshake: decrypt the nonce and produce hmac
 */
+
+func (deb *DeveloperDebora) handshake(w http.ResponseWriter, r *http.Request) {
+	// read the request, unmarshal json
+	cipherText, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	plainText, err := Decrypt(deb.priv, cipherText)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// the plainText is the nonce
+	// we sign it with itself
+	mac := SignMAC(plainText, plainText)
+	w.Write(mac)
+}

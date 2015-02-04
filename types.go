@@ -16,13 +16,22 @@ type DebMaster struct {
 	callFunc func(payload []byte)
 }
 
+// DebeloperDebora runs the server that responds to
+// authentication requests from clients. It is short lived, spawned by
+// `debora call` on the developer's machine, and killed by the developer
+type DeveloperDebora struct {
+	priv string
+}
+
 // For communicating with the debora daemon
 // The same object is used for local communication
 // and for communication with the developer
 type RequestObj struct {
-	Key string // hex encoded der public key
-	Pid int
-	App string // process name
+	Key  string   // hex encoded DER public key
+	Pid  int      // process id
+	Args []string // command line call that started the process
+	App  string   // process name
+	Host string   // bootstrap node (developer's ip:port)
 
 	nonce []byte // random bytes
 }
