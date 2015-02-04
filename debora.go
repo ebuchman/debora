@@ -1,40 +1,34 @@
 package debora
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
-	"strconv"
 )
 
-var GoPath = os.Getenv("GOPATH")
-var DeboraBin = path.Join(GoPath, "bin", "debora")
-var DeboraSrcPath = path.Join(GoPath, "github.com", "ebuchman", "debora")
-var DeboraCmdPath = path.Join(DeboraSrcPath, "cmd", "debora")
-var DeboraHost = "localhost:56565"
-
-func init() {
-	debHost := os.Getenv("DEBORA_HOST")
-	if debHost != "" {
-		DeboraHost = debHost
-	}
-}
+var (
+	HomeDir             = homeDir()
+	GoPath              = os.Getenv("GOPATH")
+	DeboraRoot          = path.Join(HomeDir, ".debora")
+	DeboraBin           = path.Join(GoPath, "bin", "debora")
+	DeboraSrcPath       = path.Join(GoPath, "github.com", "ebuchman", "debora")
+	DeboraCmdPath       = path.Join(DeboraSrcPath, "cmd", "debora")
+	DeboraHost          = "localhost:56565" // local debora daemon
+	DeveloperDeboraHost = "0.0.0.0:8009"    // developer's debora for this app
+	DebMasterHost       = "localhost:56567" // developer's debora in process with app
+)
 
 // Debra interface from caller is two functions:
 // 	Add(key []byte) starts a new debora process or add a key to an existing one
-//	Call(key []byte) calls the debora server and has her take down this process, update it, and restart it
+//	Call() calls the debora server and has her take down this process, update it, and restart it
 
 // check if a debora already exists for this key
 // record details of current process
 // start a new process with http server
 // tell the new process about ourselves
-func Add(key []byte) error {
+func Add(key string) error {
 	if !isDeboraRunning() {
 		// blocks until debora starts
 		if err := startDebora(); err != nil {
@@ -67,109 +61,44 @@ func Call() error {
 	return callDebora(pid)
 }
 
-// check if the debora server is running
-func isDeboraRunning() bool {
-	_, err := requestResponse(DeboraHost, "ping", nil)
-	if err != nil {
-		log.Println(err)
-		return false
+/*
+	There are three debora servers:
+	1. Client side daemon (stand alone process on client machine)
+	2. Developer side in-process (wait for develoepr to trigger broadcast)
+	3. Developer side call daemon (communicates with clients once they have begun the call sequence)
+*/
+
+// This function blocks. It's the main debora daemon
+// It should be run by the new debora process
+// and never by another application
+func ListenAndServe() error {
+	deb := &Debora{
+		debKeys: make(map[int]string),
+		debIds:  make(map[string]int),
 	}
-	return true
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ping", deb.ping)
+	mux.HandleFunc("/add", deb.add)
+	mux.HandleFunc("/call", deb.call)
+	mux.HandleFunc("/known", deb.known)
+	if err := http.ListenAndServe(DeboraHost, mux); err != nil {
+		return err
+	}
+	return nil
 }
 
-// start the debrora server
-// install if not present
-func startDebora() error {
-	// if debora is not installed, install her
-	if _, err := os.Stat(DeboraCmdPath); err != nil {
-		if err = installDebora(); err != nil {
-			return err
+// Spawn a new go routine to listen and serve http
+// for this process. Responds to `debora -call` issued
+// by developer
+func Master(appName string, callFunc func(payload []byte)) {
+	deb := &DebMaster{
+		callFunc: callFunc,
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/call", deb.call)
+	go func() {
+		if err := http.ListenAndServe(DebMasterHost, mux); err != nil {
+			log.Println("Error on deb master listen:", err)
 		}
-	}
-
-	cmd := exec.Command(DeboraCmdPath)
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	return nil
-}
-
-// install the debora binary (server)
-func installDebora() error {
-	cur, _ := os.Getwd()
-	os.Chdir(DeboraCmdPath)
-	cmd := exec.Command("go", "get", "-d")
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-
-	cmd = exec.Command("go", "install")
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-
-	os.Chdir(cur)
-	return nil
-}
-
-func requestResponse(host, method string, body []byte) ([]byte, error) {
-	req, err := http.NewRequest("POST", host+"/"+method, bytes.NewBuffer(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	contents, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode > 399 {
-		return nil, fmt.Errorf("HTTP error %d: %s", resp.StatusCode, contents)
-	}
-	return contents, nil
-}
-
-func deboraAdd(key []byte, pid int) error {
-	reqObj := RequestObj{key, pid}
-	b, err := json.Marshal(reqObj)
-	if err != nil {
-		return err
-	}
-	_, err = requestResponse(DeboraHost, "add", b)
-	return err
-}
-
-func callDebora(pid int) error {
-	reqObj := RequestObj{nil, pid}
-	b, err := json.Marshal(reqObj)
-	if err != nil {
-		return err
-	}
-	_, err = requestResponse(DeboraHost, "call", b)
-	return err
-}
-
-func knownDeb(pid int) bool {
-	reqObj := RequestObj{nil, pid}
-	b, err := json.Marshal(reqObj)
-	if err != nil {
-		log.Println(err)
-		return false
-	}
-	b, err = requestResponse(DeboraHost, "known", b)
-	if err != nil {
-		log.Println(err)
-		return false
-	}
-	if b == nil {
-		return false
-	}
-	return true
+	}()
 }

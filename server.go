@@ -3,35 +3,26 @@ package debora
 import (
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"net/http"
 )
 
-type Debora struct {
-	debs map[int][]byte // map pids to keys
-}
+/*
+	There are three debora servers:
+	1. Client side daemon (stand alone process on client machine)
+	2. Developer side in-process (wait for develoepr to trigger broadcast)
+	3. Developer side call daemon (communicates with clients once they have begun the call sequence)
+*/
 
-// blocks
-func ListenAndServe() error {
-	deb := &Debora{
-		debs: make(map[int][]byte),
-	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/ping", deb.ping)
-	mux.HandleFunc("/add", deb.add)
-	mux.HandleFunc("/call", deb.call)
-	mux.HandleFunc("/known", deb.known)
-	if err := http.ListenAndServe(DeboraHost, mux); err != nil {
-		return err
-	}
-	return nil
-}
+/*
+	1. Client side daemon routes:
+	- ping: is the server up
+	- add: add a new app/process to the local debora
+	- call: take down, upgrade, and restart calling process
+	- known: is this app known to debora
+*/
 
-type RequestObj struct {
-	Key []byte
-	Pid int
-}
-
-// Check is debora server is running
+// Check if debora server is running
 func (deb *Debora) ping(w http.ResponseWriter, r *http.Request) {
 	// I'm awake!
 }
@@ -50,7 +41,7 @@ func (deb *Debora) add(w http.ResponseWriter, r *http.Request) {
 	}
 	// TODO: check if pid corresponds to real process
 	// TODO: check key is appropriate length
-	deb.debs[reqObj.Pid] = reqObj.Key
+	deb.debKeys[reqObj.Pid] = reqObj.Key
 }
 
 // Find out if a process is known to debora
@@ -65,7 +56,7 @@ func (deb *Debora) known(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	if _, ok := deb.debs[reqObj.Pid]; ok {
+	if _, ok := deb.debKeys[reqObj.Pid]; ok {
 		w.Write([]byte("ok"))
 	}
 }
@@ -76,17 +67,52 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 	p, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 	var reqObj = RequestObj{}
 	err = json.Unmarshal(p, &reqObj)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	// TODO: check pid is real process=
-	key, ok := deb.debs[reqObj.Pid]
+	// TODO: check pid is real process
+	key, ok := deb.debKeys[reqObj.Pid]
 	if !ok {
-
+		// TODO: respond unknown process id!
 	}
-	_ = key
+
+	// handshake with developer:
+	var host string //todo
+	ok, err = handshake(key, host)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		log.Println("Signal from invalid developer")
+		return
+	}
+	// the signal has been authenticated
+	// terminate the process
+
+	// kill process
+	// git pull and go install
+	// restart process
 
 }
+
+/*
+	2. Developer side in-process routes:
+	- call: broadcast the upgrade message to all peers
+*/
+
+func (deb *DebMaster) call(w http.ResponseWriter, r *http.Request) {
+	// broadcast the upgrade message to all the peers
+	payload := []byte("A") // TODO
+	deb.callFunc(payload)
+}
+
+/*
+	3. Developer side call daemon routes:
+	-
+*/
