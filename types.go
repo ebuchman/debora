@@ -4,8 +4,8 @@ import ()
 
 // Debora daemon's main object for tracking processes and their developer's keys
 type Debora struct {
-	debKeys map[int]string // map pids to hex encoded DER pub keys
-	debIds  map[string]int // map app names to pids
+	debs  map[int]RequestObj // map pids to process descriptors
+	names map[string]int     // map app names to pids
 }
 
 // DebMaster is the debora client within the
@@ -24,14 +24,16 @@ type DeveloperDebora struct {
 }
 
 // For communicating with the debora daemon
-// The same object is used for local communication
-// and for communication with the developer
+// The same object is used for all communication
+// and for representing processes/apps
 type RequestObj struct {
 	Key  string   // hex encoded DER public key
 	Pid  int      // process id
 	Args []string // command line call that started the process
 	App  string   // process name
+	Src  string   // code path
 	Host string   // bootstrap node (developer's ip:port)
+	Tty  string   // terminal window for stdout
 
 	nonce []byte // random bytes
 }

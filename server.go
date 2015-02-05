@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"path"
 )
 
 /*
@@ -29,6 +31,11 @@ func (deb *Debora) ping(w http.ResponseWriter, r *http.Request) {
 	// I'm awake!
 }
 
+// TODO: secure this!
+func (deb *Debora) kill(w http.ResponseWriter, r *http.Request) {
+	log.Fatal("Goodbye")
+}
+
 // Add a new process to debora
 func (deb *Debora) add(w http.ResponseWriter, r *http.Request) {
 	// read the request, unmarshal json
@@ -44,7 +51,7 @@ func (deb *Debora) add(w http.ResponseWriter, r *http.Request) {
 	// TODO: check if pid corresponds to real process
 
 	// TODO: check key is appropriate length
-	deb.debKeys[reqObj.Pid] = reqObj.Key
+	deb.debs[reqObj.Pid] = reqObj
 }
 
 // Find out if a process is known to debora
@@ -59,7 +66,8 @@ func (deb *Debora) known(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	if _, ok := deb.debKeys[reqObj.Pid]; ok {
+	if _, ok := deb.debs[reqObj.Pid]; ok {
+		// this need only be not nil or len 0
 		w.Write([]byte("ok"))
 	}
 }
@@ -90,9 +98,8 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key, ok := deb.debKeys[pid]
-	log.Println("Key:", key)
-	log.Println(deb.debKeys)
+	obj, ok := deb.debs[pid]
+	key := obj.Key
 	if !ok {
 		// TODO: respond (debora) unknown process id!
 		http.Error(w, fmt.Sprintf("Unknown process id %d", pid), http.StatusInternalServerError)
@@ -114,11 +121,55 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// the signal has been authenticated
 	log.Println("the signal is authentic!")
+	log.Println("upgrading the binary")
 
-	// TODO: upgrade the binary
+	// upgrade the binary
+	cur, _ := os.Getwd()
+	srcDir := path.Join(GoPath, "src", obj.Src)
+	if err := os.Chdir(srcDir); err != nil {
+		log.Println("bad dir", err)
+		http.Error(w, fmt.Sprintf("bad directory %s", srcDir), http.StatusInternalServerError)
+		return
+	}
+	if err := upgradeRepo(obj.Src); err != nil {
+		log.Println("err on upgrade", err)
+		http.Error(w, fmt.Sprintf("error on upgrade %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
+	if err := installRepo(obj.Src); err != nil {
+		log.Println("install err", err)
+		http.Error(w, fmt.Sprintf("error on repo install %s", err.Error()), http.StatusInternalServerError)
+		return
+	}
 
+	tty := obj.Tty
+	f, err := os.OpenFile(tty, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		//TODO: can't open terminal device but still need to restart process!
+		log.Println("Error opening device:", err)
+	}
+	f.Write([]byte("sup holmes"))
+
+	// TODO: track the dir the original program was run in and use that!
+	// Also, can we get it's stdout?!
+	os.Chdir(cur)
+
+	/*var ch chan int
+	go func() {
+		log.Println("waiting for shutdown")
+		if _, err = proc.Wait(); err != nil {
+			log.Println("err on wait:", err)
+			// TODO: the process may be done now but some other error has
+			// occured. We need to bring it back up!
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		ch <- 0
+
+	}()*/
+
+	log.Println("terminating the process")
 	// terminate the process
 	err = proc.Signal(os.Interrupt)
 	if err != nil {
@@ -126,16 +177,37 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = proc.Wait()
-	if err != nil {
-		// TODO: the process may be done now but some other error has
-		// occured. We need to bring it back up!
+	//<-ch
+
+	log.Println("restarting process")
+	// restart process
+	prgm := obj.Args[0]
+	var args []string
+	if len(obj.Args) < 2 {
+		args = []string{}
+	} else {
+		args = obj.Args[1:]
+	}
+	log.Println("Program:", prgm)
+	log.Println("args:", args)
+	cmd := exec.Command(prgm, args...)
+	// BUG: this doesn't catch ctrl-c
+	cmd.Stdin = f
+	cmd.Stdout = f
+	cmd.Stderr = f
+	if err := cmd.Start(); err != nil {
+		log.Println("err on start:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
 
-	// TODO: restart process
+func upgradeRepo(src string) error {
+	return nil
+}
 
+func installRepo(src string) error {
+	return nil
 }
 
 /*

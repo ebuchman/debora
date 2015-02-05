@@ -46,10 +46,21 @@ func main() {
 			Action: cliKeygen,
 			Flags:  []cli.Flag{},
 		},
+		cli.Command{
+			Name:   "kill",
+			Usage:  "kill the debora daemon",
+			Action: cliKill,
+			Flags:  []cli.Flag{},
+		},
 	}
 
 	app.Run(os.Args)
 
+}
+
+func cliKill(c *cli.Context) {
+	_, err := debora.RequestResponse("http://"+debora.DeboraHost, "kill", nil)
+	ifExit(err)
 }
 
 // run debora and block forever
@@ -88,7 +99,7 @@ func cliCall(c *cli.Context) {
 	ifExit(err)
 
 	priv := app.PrivateKey
-	// listen and serve
+	// listen and serve for authentication requests from clients
 	go func() {
 		err = debora.DeveloperListenAndServe(listen, priv)
 		ifExit(err)
@@ -102,7 +113,6 @@ func cliCall(c *cli.Context) {
 	for {
 		time.Sleep(time.Second)
 	}
-
 }
 
 func cliKeygen(c *cli.Context) {

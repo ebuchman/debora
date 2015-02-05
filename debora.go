@@ -23,15 +23,15 @@ var (
 )
 
 // Debra interface from caller is two functions:
-// 	Add(key []byte) starts a new debora process or add a key to an existing one
+// 	Add(key, src string) starts a new debora process or add a key to an existing one
 //	Call(payload []byte) calls the debora server and has her take down this process, update it, and restart it
 
 // Add the current process to debora's control table
 // The only thing provided by the calling app is the developers public key
 // If debora is not running, start her.
-func Add(key string) error {
+func Add(key, src string) error {
 	if !isDeboraRunning() {
-		// blocks until debora starts
+		// XXX: blocks until debora starts
 		if err := startDebora(); err != nil {
 			return err
 		}
@@ -39,7 +39,8 @@ func Add(key string) error {
 
 	pid := os.Getpid()
 	if !knownDeb(pid) {
-		if err := deboraAdd(key, ARGS[0], pid, ARGS); err != nil {
+		tty := getTty()
+		if err := deboraAdd(key, ARGS[0], src, tty, pid, ARGS); err != nil {
 			return err
 		}
 	}
@@ -47,6 +48,7 @@ func Add(key string) error {
 }
 
 // Initiate sequence to upgrade and restart the current process
+// Payload is json encoded ReqObj with Host field
 func Call(payload []byte) error {
 	if !isDeboraRunning() {
 		return fmt.Errorf("Debora is not running on this machine")
@@ -79,11 +81,12 @@ func Call(payload []byte) error {
 // This function blocks.
 func DeboraListenAndServe() error {
 	deb := &Debora{
-		debKeys: make(map[int]string),
-		debIds:  make(map[string]int),
+		debs:  make(map[int]RequestObj),
+		names: make(map[string]int),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ping", deb.ping)
+	mux.HandleFunc("/kill", deb.kill)
 	mux.HandleFunc("/add", deb.add)
 	mux.HandleFunc("/call", deb.call)
 	mux.HandleFunc("/known", deb.known)
@@ -121,7 +124,6 @@ func DeveloperListenAndServe(host, priv string) error {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", deb.fuck)
 	mux.HandleFunc("/handshake", deb.handshake)
 	log.Println("Developer debora listening on", host)
 	if err := http.ListenAndServe(host, mux); err != nil {

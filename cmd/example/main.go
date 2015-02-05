@@ -16,6 +16,7 @@ var (
 )
 
 var (
+	src       = "github.com/ebuchman/debora/cmd/example"
 	bootstrap = "0.0.0.0:8009" // developer's ip and port
 	me        = "0.0.0.0:8010" // my ip and port
 
@@ -44,7 +45,7 @@ func main() {
 	// Non-developer agent
 	// Adds current process to debora
 	if *deboraM {
-		err := debora.Add(PublicKey)
+		err := debora.Add(PublicKey, src)
 		ifExit(err)
 		local = me
 		remote = bootstrap
@@ -115,7 +116,10 @@ func deboraHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Println("got the call")
-	debora.Call(payload)
+	if err := debora.Call(payload); err != nil {
+		log.Println(err)
+	}
+
 }
 
 // called by the developer's DebMaster when triggered by `debora call`
@@ -129,7 +133,11 @@ func broadcast(payload []byte) {
 		//b, _ := json.Marshal(reqObj)
 		log.Printf("attempting broadcast to %s at %s\n", conAddr, listenAddr)
 		// send MsgDeboraTy
-		debora.RequestResponse("http://"+listenAddr, "debora", payload)
+		b, err := debora.RequestResponse("http://"+listenAddr, "debora", payload)
+		if err != nil {
+			log.Println(err)
+		}
+		log.Println("call response:", string(b))
 	}
 }
 

@@ -71,19 +71,20 @@ func installDebora() error {
 }
 
 // add a process to debora
-func deboraAdd(key, name string, pid int, args []string) error {
+func deboraAdd(key, name, src, tty string, pid int, args []string) error {
 	reqObj := RequestObj{
 		Key:  key,
 		Pid:  pid,
 		Args: args,
 		App:  name,
+		Src:  src,
+		Tty:  tty,
 		//Host: host,
 	}
 	b, err := json.Marshal(reqObj)
 	if err != nil {
 		return err
 	}
-	log.Println("deboraAdd:", pid, key)
 	_, err = RequestResponse("http://"+DeboraHost, "add", b)
 	return err
 }

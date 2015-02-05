@@ -8,9 +8,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/user"
 	"path"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -126,4 +128,34 @@ func CheckValidProcess(pid int) (*os.Process, error) {
 		return nil, fmt.Errorf("Invalid process id %d", pid)
 	}
 	return proc, nil
+}
+
+// returns device path
+func getTty() string {
+	pid := os.Getpid()
+	cmd1 := exec.Command("ps")
+	cmd2 := exec.Command("grep", strconv.Itoa(pid))
+	cmd3 := exec.Command("grep", "-v", "grep")
+	cmd4 := exec.Command("awk", "{print $2}")
+	//cmd4 := exec.Command("awk")
+
+	cmd2.Stdin, _ = cmd1.StdoutPipe()
+	cmd3.Stdin, _ = cmd2.StdoutPipe()
+	//      cmd3.Stdout = os.Stdout
+	cmd4.Stdin, _ = cmd3.StdoutPipe()
+	buf := bytes.NewBuffer([]byte{})
+	cmd4.Stdout = buf
+	cmd4.Start()
+	cmd3.Start()
+	cmd2.Start()
+	cmd1.Run()
+	cmd2.Wait()
+	cmd3.Wait()
+	cmd4.Wait()
+
+	b := buf.Bytes()
+	b = b[:len(b)-1]
+
+	device := path.Join("/dev", strings.TrimSpace(string(b)))
+	return device
 }
