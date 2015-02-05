@@ -3,36 +3,54 @@ Debora
 
 A simple tool for allowing developers to push updates to the network running their p2p application.
 
-# How it works
+# High level overview
 
-Add a new `MsgDeboraTy` to your P2P protocol which receives a message (presumably from the developer)
-and initiates the upgrade sequence by calling `debora.Call(payload []byte)`, where `payload` is the payload that came in from 
-the developer in the `MsgDeboraTy` msg.
-This will kill the running process, upgrade it, and restart it.
+A developer has some p2p application with a bunch of peers running the software over some testnet.
+The developer updates the source code and wants to push the changes to everyone on the network.
+The developer runs `debora call <appname>` which pings a server running in his instance of the software.
+The server has a hook into the peer list of the p2p protocol, and broadcasts a special message to all the peers.
+The peers receive the message and challenge the sender to authenticate via public key.
+The peers upgrade and restart the software.
 
-Note we make every effort to avoid having the users open any extra ports (so we use existing, possibly outbound, connections from the p2p layer).
+# Interface 
 
-As a developer, first create a new key pair for your app with `debora -keygen <appname>`.
+Debora requires three additions to your application's source code:
 
-In the beginning of the program, you should call `debora.Add(key []byte)`, where key is the public key generated in the previous step,
-(it should be hardcoded into the application).
-This will start the debora process on the client machine if it is not already running,
-and add the process id and provided key to the debora's table of processes. 
-Debora will now use this key to negotiate a shared secret for an HMAC, and will only accept messages 
-regarding this process if they are signed with the appropriate hmac key.
-This negotiation occurs every time `Call(payload []byte)` is called.
+1. `DebMasterListenAndServe(appName string, callFunc func(payload []byte))` must be called in the process running on the developer's machine
+2. `Add(key, src string)` must be called towards the start of the program on every peer's machine
+3. `Call(payload []byte)` must be called when the peer receives a special message over the wire from the developer
 
-Now, include a `debora-dev` flag in your apps cli which when provided calls `debora.DebMasterListenAndServe(appName string, callFunc func(payload []byte))`, 
-where `callFunc` is responsible for broadcasting a `MsgDeboraTy` message containing the payload to all peers. 
-`DebMasterListenAndServe` will start a little in-process http server which can be called with `debora -call <appname>`, 
-triggering the `DeboraMsgTy` broadcast and hence the upgrade protocol in all connected peers. 
-If a client attempts this, it will fail as they (presumably) do not have the appropriate key. 
-The developer's public key should be hard coded into the application's source code and provided in `debora.Add(key)`.
+# Low level overview
+
+Add a new `MsgDeboraTy` to your P2P protocol which is presumably sent by the developer
+and initiates the upgrade sequence by calling `debora.Call(payload []byte)`, where `payload` is the payload that came in the msg.
+This payload is originally crafted when the developer runs `debora call <appname>`, and should be left unmodified.
+The end result of `Call` is to kill the running process, upgrade it, and restart it.
 
 When a client receives the message and runs `debora.Call(payload []byte)`, it will send a request to a local debora instance which will generate
-a random nonce (encrypted with the developers public key) and send it to the developer's deborah (the address is provided in the payload). 
+a random nonce, encrypt it with the developers public key, and send it to the developer's deborah (the address is provided in the payload). 
 If the response includes an HMAC signed with the random nonce, then the developer has been authenticated, and deborah will
 shutdown the appropriate process, upgrade it with a `git pull` and `go install`, and restart it.
+
+Note we make every effort to avoid having the users open any extra ports, so we use existing, possibly outbound, connections from the p2p layer.
+
+We do, however, require the developer to expose another port (for the authentication protocol, so as to not require more additions to the p2p protocol of the application)
+
+As a developer, first create a new key pair for your app with `debora -keygen <appname>`. Take the public key and hardcode it into your application's souce code.
+
+In the beginning of the program, `debora.Add(key, src string)` should be called, where `key` is the public key generated in the previous step,
+and `src` is the repository's path (eg. `github.com/ebuchman/debora`).
+`Add` will start the debora process on the client machine if it is not already running,
+and add the application's process id and provided key to the debora's table of processes. 
+Debora will now use this key to negotiate a shared secret for an HMAC, and will only accept messages 
+regarding this process if they are signed with the appropriate hmac key.
+This negotiation occurs every time `Call(payload []byte)` is called (ie. every time the special message is recieved in the p2p protocol)
+
+Now, include a `debora-dev` flag in your apps cli which when provided calls `debora.DebMasterListenAndServe(appName string, callFunc func(payload []byte))`, 
+where `callFunc` is responsible for broadcasting a `MsgDeboraTy` message containing the payload to all peers. Do not modify the payload.
+`DebMasterListenAndServe` will start a little in-process http server which can be called with `debora -call <appname>`, 
+triggering the `DeboraMsgTy` broadcast and hence the upgrade protocol in all connected peers. 
+If a client attempts this, it will fail as they (presumably) do not have the appropriate private key to pass the authentication (hmac) step.
 
 # Example
 
