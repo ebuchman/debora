@@ -149,7 +149,6 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 		//TODO: can't open terminal device but still need to restart process!
 		log.Println("Error opening device:", err)
 	}
-	f.Write([]byte("sup holmes"))
 
 	// TODO: track the dir the original program was run in and use that!
 	// Also, can we get it's stdout?!
@@ -203,10 +202,24 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 }
 
 func upgradeRepo(src string) error {
+	cmd := exec.Command("git", "stash")
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	cmd = exec.Command("git", "pull", "origin", "master")
+	cmd.Stdout = os.Stdout
+	if err := cmd.Run(); err != nil {
+		return err
+	}
 	return nil
 }
 
 func installRepo(src string) error {
+	cmd := exec.Command("go", "install")
+	if err := cmd.Run(); err != nil {
+		return err
+	}
 	return nil
 }
 
