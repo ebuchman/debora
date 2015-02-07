@@ -13,7 +13,7 @@ import (
 
 /*
 	There are three debora servers:
-	1. Client side daemon (stand alone process on client machine)
+	1. Client side daemon (stand alone process on client machine. One per app)
 	2. Developer side in-process with app (waits for develoepr to trigger broadcast)
 	3. Developer side call daemon (communicates with clients once they have begun the call sequence)
 */
@@ -21,7 +21,8 @@ import (
 /*
 	1. Client side daemon routes:
 	- ping: is the server up
-	- add: add a new app/process to the local debora
+	- kill: kill the debora process
+	- add: add an app process to the local debora
 	- call: take down, upgrade, and restart calling process
 	- known: is this app known to debora
 */
@@ -48,10 +49,17 @@ func (deb *Debora) add(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	// TODO: check if pid corresponds to real process
 
-	// TODO: check key is appropriate length
-	deb.debs[reqObj.Pid] = reqObj
+	// check if process is real
+	pid := reqObj.Pid
+	if _, err = CheckValidProcess(pid); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// TODO: validate key length
+
+	deb.debs[pid] = reqObj
 }
 
 // Find out if a process is known to debora
@@ -89,7 +97,6 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check if process is real
-	// by sending it the 0 signal
 	pid := reqObj.Pid
 	log.Println("process id:", pid)
 	var proc *os.Process
@@ -101,12 +108,11 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 	obj, ok := deb.debs[pid]
 	key := obj.Key
 	if !ok {
-		// TODO: respond (debora) unknown process id!
 		http.Error(w, fmt.Sprintf("Unknown process id %d", pid), http.StatusInternalServerError)
 		return
 	}
 
-	// handshake with developer:
+	// handshake with developer
 	host := reqObj.Host
 	log.Println("ready to handshake with", host)
 	ok, err = handshake(key, host)
@@ -143,12 +149,13 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tty := obj.Tty
-	f, err := os.OpenFile(tty, os.O_APPEND|os.O_WRONLY, 0600)
-	if err != nil {
-		//TODO: can't open terminal device but still need to restart process!
-		log.Println("Error opening device:", err)
-	}
+	// TODO: don't use tty. just enforce one debora daemon per process and use the os.Stdout/in for both
+	/*	tty := obj.Tty
+		f, err := os.OpenFile(tty, os.O_APPEND|os.O_WRONLY, 0600)
+		if err != nil {
+			//TODO: can't open terminal device but still need to restart process!
+			log.Println("Error opening device:", err)
+		}*/
 
 	// TODO: track the dir the original program was run in and use that!
 	// Also, can we get it's stdout?!
@@ -190,10 +197,9 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 	log.Println("Program:", prgm)
 	log.Println("args:", args)
 	cmd := exec.Command(prgm, args...)
-	// BUG: this doesn't catch ctrl-c
-	cmd.Stdin = f
-	cmd.Stdout = f
-	cmd.Stderr = f
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		log.Println("err on start:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

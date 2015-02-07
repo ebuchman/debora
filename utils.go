@@ -47,9 +47,14 @@ func init() {
 
 	// make root dir
 	if _, err := os.Stat(DeboraRoot); err != nil {
-		err := os.Mkdir(path.Join(HomeDir, ".debora"), 0700)
-		if err != nil {
+		if err := os.Mkdir(DeboraRoot, 0700); err != nil {
 			log.Fatal("Error making root dir:", err)
+		}
+	}
+	// make apps dir
+	if _, err := os.Stat(DeboraApps); err != nil {
+		if err := os.Mkdir(DeboraApps, 0700); err != nil {
+			log.Fatal("Error making apps dir:", err)
 		}
 	}
 
@@ -94,6 +99,7 @@ func LoadConfig(configFile string) error {
 
 // http json request and response
 func RequestResponse(host, method string, body []byte) ([]byte, error) {
+	host = "http://" + host
 	req, err := http.NewRequest("POST", host+"/"+method, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
@@ -117,7 +123,7 @@ func RequestResponse(host, method string, body []byte) ([]byte, error) {
 	return contents, nil
 }
 
-// Check is a process is running
+// Check if a process is running by sending it the 0 signal
 func CheckValidProcess(pid int) (*os.Process, error) {
 	proc, err := os.FindProcess(pid)
 	if err != nil {
@@ -158,4 +164,49 @@ func getTty() string {
 
 	device := path.Join("/dev", strings.TrimSpace(string(b)))
 	return device
+}
+
+// every debora writes its port to a file
+// named after the app
+func resolveHost(app string) (string, error) {
+	var host string
+	filename := path.Join(DeboraApps, app)
+	if _, err := os.Stat(filename); err != nil {
+		// if the file does not exist
+		// we have to find an available port
+		// and add the file
+		if fs, err := ioutil.ReadDir(DeboraApps); err != nil {
+			return "", err
+		} else {
+			portsTaken := make(map[string]bool)
+			// make map of all ports
+			for _, f := range fs {
+				if b, err := ioutil.ReadFile(f.Name()); err != nil {
+					return "", err
+				} else {
+					portsTaken[string(b)] = true
+				}
+			}
+			// find unused port
+			for i := 0; ; i++ {
+				host = strconv.Itoa(StartPort + i)
+				taken := portsTaken[host]
+				if !taken {
+					// we found an unused port
+					if err := ioutil.WriteFile(filename, []byte(host), 0600); err != nil {
+						return "", err
+					}
+					break
+				}
+			}
+		}
+	}
+
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return "", err
+	}
+
+	// the file should simply contain the port
+	return "localhost:" + string(b), nil
 }

@@ -10,16 +10,22 @@ import (
 )
 
 var (
-	HomeDir             = homeDir()
-	GoPath              = os.Getenv("GOPATH")
-	DeboraRoot          = path.Join(HomeDir, ".debora")
-	DeboraConfig        = path.Join(DeboraRoot, "config.json")
-	DeboraBin           = path.Join(GoPath, "bin", "debora")
-	DeboraSrcPath       = path.Join(GoPath, "src", "github.com", "ebuchman", "debora")
-	DeboraCmdPath       = path.Join(DeboraSrcPath, "cmd", "debora")
+	// important paths
+	HomeDir       = homeDir()
+	GoPath        = os.Getenv("GOPATH")
+	DeboraRoot    = path.Join(HomeDir, ".debora")
+	DeboraApps    = path.Join(DeboraRoot, "apps")
+	DeboraConfig  = path.Join(DeboraRoot, "config.json")
+	DeboraBin     = path.Join(GoPath, "bin", "debora")
+	DeboraSrcPath = path.Join(GoPath, "src", "github.com", "ebuchman", "debora")
+	DeboraCmdPath = path.Join(DeboraSrcPath, "cmd", "debora")
+
 	DeboraHost          = "localhost:56565" // local debora daemon
 	DeveloperDeboraHost = "0.0.0.0:8009"    // developer's debora for this app
 	DebMasterHost       = "localhost:56566" // developer's debora in process with app
+
+	deboraHost string // host debora for this app process
+	StartPort  = 56565
 )
 
 // Debra interface from caller is two functions:
@@ -29,41 +35,57 @@ var (
 // Add the current process to debora's control table
 // The only thing provided by the calling app is the developers public key
 // If debora is not running, start her.
-func Add(key, src string) error {
-	if !isDeboraRunning() {
+// Call this function early on in the program
+func Add(key, src, app string) error {
+	host, err := resolveHost(app)
+	if err != nil {
+		return err
+	}
+
+	if !rpcIsDeboraRunning(host) {
 		// XXX: blocks until debora starts
-		if err := startDebora(); err != nil {
+		if err := startDebora(host, app); err != nil {
 			return err
 		}
 	}
 
+	// set the global variable host for this process
+	// so we can get it easily in Call
+	deboraHost = host
+
 	pid := os.Getpid()
-	if !knownDeb(pid) {
-		tty := getTty()
-		if err := deboraAdd(key, ARGS[0], src, tty, pid, ARGS); err != nil {
-			return err
-		}
+	if rpcKnownDeb(host, pid) {
+		return fmt.Errorf("The process has already been added to debora")
 	}
+
+	tty := getTty()
+	if err := rpcAdd(host, key, ARGS[0], src, tty, pid, ARGS); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 // Initiate sequence to upgrade and restart the current process
 // Payload is json encoded ReqObj with Host field
+// Call this function when the 'signal' is received from trusted developer
 func Call(payload []byte) error {
-	if !isDeboraRunning() {
+	host := deboraHost
+	if !rpcIsDeboraRunning(host) {
 		return fmt.Errorf("Debora is not running on this machine")
 	}
 	pid := os.Getpid()
-	if !knownDeb(pid) {
-		return fmt.Errorf("Unknown key")
+	if !rpcKnownDeb(host, pid) {
+		return fmt.Errorf("This process is not known to debora. Did you run Add first?")
 	}
 
 	var reqObj = RequestObj{}
 	if err := json.Unmarshal(payload, &reqObj); err != nil {
 		return err
 	}
-	host := reqObj.Host
-	return callDebora(pid, host)
+	// developer's address
+	remote := reqObj.Host
+	return rpcCall(host, remote, pid)
 }
 
 /*
@@ -79,7 +101,7 @@ func Call(payload []byte) error {
 // It should be run by the new debora process
 // and never by another application.
 // This function blocks.
-func DeboraListenAndServe() error {
+func DeboraListenAndServe(app string) error {
 	deb := &Debora{
 		debs:  make(map[int]RequestObj),
 		names: make(map[string]int),

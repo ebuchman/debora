@@ -25,7 +25,7 @@ func main() {
 	app.Commands = []cli.Command{
 		cli.Command{
 			Name:   "run",
-			Usage:  "run the debora daemon",
+			Usage:  "run the debora daemon for a particular app",
 			Action: cliRun,
 			Flags:  []cli.Flag{},
 		},
@@ -59,13 +59,18 @@ func main() {
 }
 
 func cliKill(c *cli.Context) {
-	_, err := debora.RequestResponse("http://"+debora.DeboraHost, "kill", nil)
+	_, err := debora.RequestResponse(debora.DeboraHost, "kill", nil)
 	ifExit(err)
 }
 
 // run debora and block forever
 func cliRun(c *cli.Context) {
-	err := debora.DeboraListenAndServe()
+	args := c.Args()
+	if len(args) == 0 {
+		log.Fatal("Must provide an app name")
+	}
+	app := args[0]
+	err := debora.DeboraListenAndServe(app)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -107,7 +112,7 @@ func cliCall(c *cli.Context) {
 
 	log.Println("Triggering broadcast with request to:", remote)
 	// trigger the broadcast with an http request
-	_, err = debora.RequestResponse("http://"+remote, "call", b)
+	_, err = debora.RequestResponse(remote, "call", b)
 	ifExit(err)
 
 	for {

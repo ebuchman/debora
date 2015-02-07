@@ -16,7 +16,8 @@ var (
 )
 
 var (
-	src       = "github.com/ebuchman/debora/cmd/example"
+	AppName   = "example"
+	SrcPath   = "github.com/ebuchman/debora/cmd/example"
 	bootstrap = "0.0.0.0:8009" // developer's ip and port
 	me        = "0.0.0.0:8010" // my ip and port
 
@@ -24,9 +25,11 @@ var (
 )
 
 // initialize the app with keys
+// this is a convenience function that in practice
+// is executed only by the developer on their machine
 func init() {
 	app := debora.App{
-		Name:       "example",
+		Name:       AppName,
 		PublicKey:  PublicKey,
 		PrivateKey: PrivateKey,
 	}
@@ -45,7 +48,7 @@ func main() {
 	// Non-developer agent
 	// Adds current process to debora
 	if *deboraM {
-		err := debora.Add(PublicKey, src)
+		err := debora.Add(PublicKey, SrcPath, AppName)
 		ifExit(err)
 		local = me
 		remote = bootstrap
@@ -77,7 +80,7 @@ func runProtocol(local, remote string) {
 		for {
 			log.Println("connecting to:", remote)
 			// send our listen address
-			_, err := debora.RequestResponse("http://"+remote, "", []byte(local))
+			_, err := debora.RequestResponse(remote, "", []byte(local))
 			if err != nil {
 				log.Println(err)
 			}
@@ -133,7 +136,7 @@ func broadcast(payload []byte) {
 		//b, _ := json.Marshal(reqObj)
 		log.Printf("attempting broadcast to %s at %s\n", conAddr, listenAddr)
 		// send MsgDeboraTy
-		b, err := debora.RequestResponse("http://"+listenAddr, "debora", payload)
+		b, err := debora.RequestResponse(listenAddr, "debora", payload)
 		if err != nil {
 			log.Println(err)
 		}

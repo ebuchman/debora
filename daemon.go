@@ -14,8 +14,8 @@ import (
 */
 
 // check if the debora server is running
-func isDeboraRunning() bool {
-	_, err := RequestResponse("http://"+DeboraHost, "ping", nil)
+func rpcIsDeboraRunning(host string) bool {
+	_, err := RequestResponse(host, "ping", nil)
 	if err != nil {
 		log.Println(err)
 		return false
@@ -26,7 +26,7 @@ func isDeboraRunning() bool {
 // start the debrora server
 // install if not present
 // block until she starts
-func startDebora() error {
+func startDebora(host, app string) error {
 	// if debora is not installed, install her
 	//if _, err := os.Stat(DeboraBin); err != nil {
 	if err := installDebora(); err != nil {
@@ -34,7 +34,7 @@ func startDebora() error {
 	}
 	//}
 
-	cmd := exec.Command(DeboraBin, "run")
+	cmd := exec.Command(DeboraBin, "run", app)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
@@ -42,7 +42,7 @@ func startDebora() error {
 	}
 	for {
 		time.Sleep(time.Second)
-		if isDeboraRunning() {
+		if rpcIsDeboraRunning(host) {
 			break
 		}
 	}
@@ -71,7 +71,7 @@ func installDebora() error {
 }
 
 // add a process to debora
-func deboraAdd(key, name, src, tty string, pid int, args []string) error {
+func rpcAdd(host, key, name, src, tty string, pid int, args []string) error {
 	reqObj := RequestObj{
 		Key:  key,
 		Pid:  pid,
@@ -79,39 +79,39 @@ func deboraAdd(key, name, src, tty string, pid int, args []string) error {
 		App:  name,
 		Src:  src,
 		Tty:  tty,
-		//Host: host,
-	}
-	b, err := json.Marshal(reqObj)
-	if err != nil {
-		return err
-	}
-	_, err = RequestResponse("http://"+DeboraHost, "add", b)
-	return err
-}
-
-// initiate the debora call
-func callDebora(pid int, host string) error {
-	reqObj := RequestObj{
-		Pid:  pid,
 		Host: host,
 	}
 	b, err := json.Marshal(reqObj)
 	if err != nil {
 		return err
 	}
-	_, err = RequestResponse("http://"+DeboraHost, "call", b)
+	_, err = RequestResponse(host, "add", b)
 	return err
 }
 
-// check if a process is known to debora
-func knownDeb(pid int) bool {
+// initiate the debora call
+func rpcCall(host, remote string, pid int) error {
+	reqObj := RequestObj{
+		Pid:  pid,
+		Host: remote,
+	}
+	b, err := json.Marshal(reqObj)
+	if err != nil {
+		return err
+	}
+	_, err = RequestResponse(host, "call", b)
+	return err
+}
+
+// check if the process is known to debora
+func rpcKnownDeb(host string, pid int) bool {
 	reqObj := RequestObj{Pid: pid}
 	b, err := json.Marshal(reqObj)
 	if err != nil {
 		log.Println(err)
 		return false
 	}
-	b, err = RequestResponse("http://"+DeboraHost, "known", b)
+	b, err = RequestResponse(host, "known", b)
 	if err != nil {
 		log.Println(err)
 		return false
@@ -144,7 +144,7 @@ func handshake(key, host string) (bool, error) {
 
 	// send encrypted nonce to developer
 	log.Println("sending nonce to dev:", host)
-	response, err := RequestResponse("http://"+host, "handshake", cipherText)
+	response, err := RequestResponse(host, "handshake", cipherText)
 	if err != nil {
 		return false, err
 	}
