@@ -116,7 +116,6 @@ func (deb *Debora) known(w http.ResponseWriter, r *http.Request) {
 
 // Call debora to take down a process, upgrade it, and restart
 func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
-	log.Println("In Call!")
 	// read the request, unmarshal json
 	p, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -132,7 +131,6 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 
 	// check if process is real
 	pid := reqObj.Pid
-	log.Println("process id:", pid)
 	var proc *os.Process
 	if proc, err = CheckValidProcess(pid); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -148,68 +146,44 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 
 	// handshake with developer
 	host := reqObj.Host
-	log.Println("ready to handshake with", host)
+	logger.Println("ready to handshake with", host)
 	ok, err = handshake(key, host)
-	log.Println("handshake:", ok, err)
+	logger.Println("handshake:", ok, err)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if !ok {
 		// TODO: respond signal from invalid dev
-		log.Println("Signal from invalid developer")
+		logger.Println("Signal from invalid developer")
 		return
 	}
 
-	log.Println("the signal is authentic!")
-	log.Println("upgrading the binary")
+	logger.Println("the signal is authentic!")
+	logger.Println("upgrading the binary")
 
 	// upgrade the binary
 	cur, _ := os.Getwd()
 	srcDir := path.Join(GoPath, "src", obj.Src)
 	if err := os.Chdir(srcDir); err != nil {
-		log.Println("bad dir", err)
+		logger.Println("bad dir", err)
 		http.Error(w, fmt.Sprintf("bad directory %s", srcDir), http.StatusInternalServerError)
 		return
 	}
 	if err := upgradeRepo(obj.Src); err != nil {
-		log.Println("err on upgrade", err)
+		logger.Println("err on upgrade", err)
 		http.Error(w, fmt.Sprintf("error on upgrade %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 	if err := installRepo(obj.Src); err != nil {
-		log.Println("install err", err)
+		logger.Println("install err", err)
 		http.Error(w, fmt.Sprintf("error on repo install %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 
-	// TODO: don't use tty. just enforce one debora daemon per process and use the os.Stdout/in for both
-	/*	tty := obj.Tty
-		f, err := os.OpenFile(tty, os.O_APPEND|os.O_WRONLY, 0600)
-		if err != nil {
-			//TODO: can't open terminal device but still need to restart process!
-			log.Println("Error opening device:", err)
-		}*/
-
-	// TODO: track the dir the original program was run in and use that!
-	// Also, can we get it's stdout?!
 	os.Chdir(cur)
 
-	/*var ch chan int
-	go func() {
-		log.Println("waiting for shutdown")
-		if _, err = proc.Wait(); err != nil {
-			log.Println("err on wait:", err)
-			// TODO: the process may be done now but some other error has
-			// occured. We need to bring it back up!
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		ch <- 0
-
-	}()*/
-
-	log.Println("terminating the process")
+	logger.Println("terminating the process")
 	// terminate the process
 	err = proc.Signal(os.Interrupt)
 	if err != nil {
@@ -219,7 +193,7 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 
 	//<-ch
 
-	log.Println("restarting process")
+	logger.Println("restarting process")
 	// restart process
 	prgm := obj.Args[0]
 	var args []string
@@ -228,14 +202,14 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 	} else {
 		args = obj.Args[1:]
 	}
-	log.Println("Program:", prgm)
-	log.Println("args:", args)
+	logger.Println("Program:", prgm)
+	logger.Println("args:", args)
 	cmd := exec.Command(prgm, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		log.Println("err on start:", err)
+		logger.Println("err on start:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -269,14 +243,14 @@ func installRepo(src string) error {
 */
 
 func (deb *DebMaster) call(w http.ResponseWriter, r *http.Request) {
-	log.Println("Received call request on DebMaster")
+	logger.Println("Received call request on DebMaster")
 	// read the request, unmarshal json
 	payload, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Println("Issuing broadcast")
+	logger.Println("Issuing broadcast")
 	// broadcast the upgrade message to all the peers
 	// the payload is json encoded RequestObj
 	// but probably only the Host field is filled in
@@ -289,7 +263,7 @@ func (deb *DebMaster) call(w http.ResponseWriter, r *http.Request) {
 */
 
 func (deb *DeveloperDebora) handshake(w http.ResponseWriter, r *http.Request) {
-	log.Println("Received handshake request from", r.RemoteAddr)
+	logger.Println("Received handshake request from", r.RemoteAddr)
 	// read the request, unmarshal json
 	cipherText, err := ioutil.ReadAll(r.Body)
 	if err != nil {
