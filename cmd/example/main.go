@@ -63,7 +63,8 @@ func main() {
 	// Listens for `debora call` command and broadcasts upgrade msg to connected peers
 	if *deboraDev {
 		fmt.Printf("%d: Running debora-dev server (listen to call))\n", os.Getpid())
-		debora.DebListenAndServe("example", CallPort, broadcast)
+		a := new(App)
+		debora.DebListenAndServe("example", CallPort, a.broadcast)
 		local = bootstrap
 		remote = me
 	}
@@ -143,8 +144,11 @@ func (peer *Peer) deboraHandler(w http.ResponseWriter, r *http.Request) {
 
 }
 
+type App struct {
+}
+
 // called by the developer's DebMaster when triggered by `debora call`
-func broadcast(payload []byte) {
+func (a *App) broadcast(payload []byte) {
 	fmt.Println("Broadcast!")
 	// broadcast MsgDeboraTy message with payload to all peers
 	for conAddr, listenAddr := range peers {
