@@ -93,7 +93,7 @@ func (deb *Debora) add(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: validate key length
 
-	deb.debs[pid] = reqObj
+	deb.deb = reqObj
 }
 
 // Find out if a process is known to debora
@@ -108,7 +108,7 @@ func (deb *Debora) known(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	if _, ok := deb.debs[reqObj.Pid]; ok {
+	if deb.deb.Pid == reqObj.Pid {
 		// this need only be not nil or len 0
 		w.Write([]byte("ok"))
 	}
@@ -137,17 +137,17 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	obj, ok := deb.debs[pid]
-	key := obj.Key
-	if !ok {
+	obj := deb.deb
+	if obj.Pid != pid {
 		http.Error(w, fmt.Sprintf("Unknown process id %d", pid), http.StatusInternalServerError)
 		return
 	}
+	key := obj.Key
 
 	// handshake with developer
 	host := reqObj.Host
 	logger.Println("ready to handshake with", host)
-	ok, err = handshake(key, host)
+	ok, err := handshake(key, host)
 	logger.Println("handshake:", ok, err)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

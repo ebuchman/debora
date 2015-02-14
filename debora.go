@@ -127,10 +127,8 @@ func Call(remoteHost string, payload []byte) error {
 // This function blocks.
 // New port is granted by the operating system
 func DeboraListenAndServe(app string) error {
-	deb := &Debora{
-		debs:  make(map[int]RequestObj),
-		names: make(map[string]int),
-	}
+	deb := new(Debora)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ping", deb.ping)
 	mux.HandleFunc("/kill", deb.kill)

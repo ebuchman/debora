@@ -1,11 +1,8 @@
 package debora
 
-import ()
-
 // Debora daemon's main object for tracking processes and their developer's keys
 type Debora struct {
-	debs  map[int]RequestObj // map pids to process descriptors
-	names map[string]int     // map app names to pids
+	deb RequestObj
 }
 
 // DebMaster is the debora client within the
@@ -33,9 +30,6 @@ type RequestObj struct {
 	App  string   // process name
 	Src  string   // code path
 	Host string   // bootstrap node (developer's ip:port)
-	//	Tty  string   // terminal window for stdout
-
-	nonce []byte // random bytes
 }
 
 type Config struct {
