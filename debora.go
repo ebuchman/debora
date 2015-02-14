@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 )
 
 var (
@@ -20,22 +21,17 @@ var (
 	DeboraSrcPath = path.Join(GoPath, "src", "github.com", "ebuchman", "debora")
 	DeboraCmdPath = path.Join(DeboraSrcPath, "cmd", "debora")
 
-	DeboraHost          = "localhost:56565" // local debora daemon
-	DeveloperDeboraHost = "0.0.0.0:8009"    // developer's debora for this app
-	DebMasterHost       = "localhost:56566" // developer's debora in process with app
-
 	deboraHost string // host debora for this app process
-	StartPort  = 56565
 )
 
 // Debra interface from caller is two functions:
-// 	Add(key, src string) starts a new debora process or add a key to an existing one
-//	Call(payload []byte) calls the debora server and has her take down this process, update it, and restart it
+// 	Add(key, src, app string) starts a new debora process or add a key to an existing one
+//	Call(remote string, payload []byte) calls the debora server and has her take down this process, update it, and restart it
 
 // Add the current process to debora's control table
 // If the process was started by the user, no debora exists.
 //  	Start one, and have it launch the app proper
-// Calling app provides dev's public key, path to src, and app name
+// The calling app provides dev's public key, path to src, and app name
 // This function must be called as early as possible in the program
 func Add(key, src, app string) error {
 	host, err := ResolveHost(app)
@@ -43,7 +39,7 @@ func Add(key, src, app string) error {
 		return err
 	}
 
-	fmt.Printf("%d: Resolve host for %s: %s\n", os.Getpid(), app, host)
+	logger.Printf("Resolve host for %s: %s\n", app, host)
 
 	// if there's no debora for this app
 	// start her and block forever
@@ -52,7 +48,7 @@ func Add(key, src, app string) error {
 		if err := startDebora(app, ARGS); err != nil {
 			return err
 		}
-		fmt.Printf("%d: We started deb and she's running. Block forever\n", os.Getpid())
+		logger.Println("We started deb and she's running. Block forever")
 		ch := make(chan int)
 		<-ch
 		return nil
@@ -61,7 +57,7 @@ func Add(key, src, app string) error {
 	// if debora's not running,
 	// a mistake was made, so cleanup and try again
 	if !rpcIsDeboraRunning(host) {
-		fmt.Printf("%d: Found bad host, cleaning file. %s: %s\n", os.Getpid(), app, host)
+		logger.Printf("Found bad host, cleaning file. %s: %s\n", app, host)
 		if err := CleanHosts(app); err != nil {
 			return err
 		}
@@ -154,7 +150,7 @@ func DeboraListenAndServe(app string) error {
 	if err := WritePort(app, port); err != nil {
 		return err
 	}
-	fmt.Printf("%d: Debora listening on: %s\n", os.Getpid(), addr)
+	logger.Println("Debora listening on: ", addr)
 	// Serve
 	srv := &http.Server{Addr: addr, Handler: mux}
 	return srv.Serve(ln)
@@ -164,16 +160,17 @@ func DeboraListenAndServe(app string) error {
 // for this process. Responds to `debora call` issued
 // by developer. This should run in-process with the app
 // on the developer's machine
-func DebMasterListenAndServe(appName string, callFunc func(payload []byte)) {
+func DebListenAndServe(appName string, port int, callFunc func(payload []byte)) {
 	deb := &DebMaster{
 		callFunc: callFunc,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/call", deb.call)
 	go func() {
-		fmt.Println("DebMaster listening on", DebMasterHost)
-		if err := http.ListenAndServe(DebMasterHost, mux); err != nil {
-			fmt.Println("Error on deb master listen:", err)
+		host := "localhost:" + strconv.Itoa(port)
+		logger.Println("DebMaster listening on", host)
+		if err := http.ListenAndServe(host, mux); err != nil {
+			logger.Println("Error on deb master listen:", err)
 		}
 	}()
 }
@@ -188,7 +185,7 @@ func DeveloperListenAndServe(host, priv string) error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/handshake", deb.handshake)
-	fmt.Println("Developer debora listening on", host)
+	logger.Println("Developer debora listening on", host)
 	if err := http.ListenAndServe(host, mux); err != nil {
 		return err
 	}

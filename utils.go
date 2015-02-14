@@ -14,6 +14,8 @@ import (
 	"syscall"
 )
 
+var logger *Logger
+
 // get the user's home directory
 func homeDir() string {
 	usr, err := user.Current()
@@ -25,22 +27,28 @@ func homeDir() string {
 
 var ARGS = []string{}
 
+func Logging(on bool) {
+	if on {
+		logger.level = 1
+	} else {
+		logger.level = 0
+	}
+}
+
 // initalize the debora library by getting the root directory
 // and the daemon's host address
 func init() {
+
 	// grab the arguments (so we can use them later, incase os.Args is modified)
 	ARGS = append(ARGS, os.Args...)
+
+	// initialize the logger
+	logger = NewLogger(0, path.Base(ARGS[0]))
 
 	// configure root dir location
 	deboraDir := os.Getenv("DEBORA_ROOT")
 	if deboraDir != "" {
 		DeboraRoot = deboraDir
-	}
-
-	// configure daemon address
-	debHost := os.Getenv("DEBORA_HOST")
-	if debHost != "" {
-		DeboraHost = debHost
 	}
 
 	// make root dir
@@ -161,4 +169,33 @@ func WritePort(app, port string) error {
 	filename := path.Join(DeboraApps, app)
 	p := []byte(port)
 	return ioutil.WriteFile(filename, p, 0600)
+}
+
+// Dead simple stupid convenient logger
+type Logger struct {
+	level int
+	pid   int
+	s     string
+}
+
+func NewLogger(level int, s string) *Logger {
+	return &Logger{
+		level: level,
+		pid:   os.Getpid(),
+		s:     s,
+	}
+}
+
+func (l *Logger) Printf(f string, s ...interface{}) {
+	if l.level > 0 {
+		fmt.Printf("[ %d %s ] %s", l.pid, l.s, fmt.Sprintf(f, s...))
+
+	}
+}
+
+func (l *Logger) Println(s ...interface{}) {
+	if l.level > 0 {
+		f := fmt.Sprintf("[ %d %s ] %s", l.pid, l.s, fmt.Sprint(s...))
+		fmt.Println(f)
+	}
 }

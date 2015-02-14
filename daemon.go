@@ -3,7 +3,6 @@ package debora
 import (
 	"crypto/rand"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -19,7 +18,7 @@ import (
 func rpcIsDeboraRunning(host string) bool {
 	_, err := RequestResponse(host, "ping", nil)
 	if err != nil {
-		fmt.Println(err)
+		logger.Println(err)
 		return false
 	}
 	return true
@@ -70,7 +69,7 @@ func startDebora(app string, args []string) error {
 
 // install the debora binary (server)
 func installDebora() error {
-	fmt.Println("Installing debora ...")
+	logger.Println("Installing debora ...")
 	cur, _ := os.Getwd()
 	if err := os.Chdir(DeboraCmdPath); err != nil {
 		return err
@@ -140,12 +139,12 @@ func rpcKnownDeb(host string, pid int) bool {
 	reqObj := RequestObj{Pid: pid}
 	b, err := json.Marshal(reqObj)
 	if err != nil {
-		fmt.Println(err)
+		logger.Println(err)
 		return false
 	}
 	b, err = RequestResponse(host, "known", b)
 	if err != nil {
-		fmt.Println(err)
+		logger.Println(err)
 		return false
 	}
 	if b == nil || len(b) == 0 {
@@ -175,7 +174,7 @@ func handshake(key, host string) (bool, error) {
 	}
 
 	// send encrypted nonce to developer
-	fmt.Println("sending nonce to dev:", host)
+	logger.Println("sending nonce to dev:", host)
 	response, err := RequestResponse(host, "handshake", cipherText)
 	if err != nil {
 		return false, err
