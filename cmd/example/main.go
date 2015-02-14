@@ -3,10 +3,12 @@ package main
 import (
 	//	"encoding/json"
 	"flag"
+	"fmt"
 	"github.com/ebuchman/debora"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -17,9 +19,10 @@ var (
 
 var (
 	AppName   = "example"
-	SrcPath   = "github.com/ebuchman/debora/cmd/example"
+	SrcPath   = "github.com/ebuchman/example"
 	bootstrap = "0.0.0.0:8009" // developer's ip and port
 	me        = "0.0.0.0:8010" // my ip and port
+	CallPort  = 56565
 
 	peers = make(map[string]string) // map from connected addr to listen addr
 )
@@ -28,6 +31,7 @@ var (
 // this is a convenience function that in practice
 // is executed only by the developer on their machine
 func init() {
+	debora.Logging(true)
 	app := debora.App{
 		Name:       AppName,
 		PublicKey:  PublicKey,
@@ -48,6 +52,7 @@ func main() {
 	// Non-developer agent
 	// Adds current process to debora
 	if *deboraM {
+		fmt.Printf("%d: Adding proc to debora\n", os.Getpid())
 		err := debora.Add(PublicKey, SrcPath, AppName)
 		ifExit(err)
 		local = me
@@ -57,14 +62,22 @@ func main() {
 	// Developer agent
 	// Listens for `debora call` command and broadcasts upgrade msg to connected peers
 	if *deboraDev {
-		debora.DebMasterListenAndServe("example", broadcast)
+		fmt.Printf("%d: Running debora-dev server (listen to call))\n", os.Getpid())
+		debora.DebListenAndServe("example", CallPort, broadcast)
 		local = bootstrap
 		remote = me
 	}
 
 	// Connect to bootstrap node and run the protocol
+
+	fmt.Printf("%d: Run the protcol. Local %s, Remote %s\n", os.Getpid(), local, remote)
 	runProtocol(local, remote)
 
+}
+
+type Peer struct {
+	local  string
+	remote string
 }
 
 // The example is a dead simple http protocol:
@@ -72,17 +85,22 @@ func main() {
 // They repeatedly send eachother pings
 // In a proper p2p protocol the dual http listeners would be replaced by a single persistent tcp connection
 func runProtocol(local, remote string) {
-	log.Println("Local Address:", local)
-	log.Println("Remote Address:", remote)
+	fmt.Println("Local Address:", local)
+	fmt.Println("Remote Address:", remote)
+
+	peer := &Peer{
+		local:  local,
+		remote: remote,
+	}
 
 	// connect to bootstrap node
 	go func() {
 		for {
-			log.Println("connecting to:", remote)
+			fmt.Println("connecting to:", remote)
 			// send our listen address
 			_, err := debora.RequestResponse(remote, "", []byte(local))
 			if err != nil {
-				log.Println(err)
+				fmt.Println(err)
 			}
 			time.Sleep(time.Second)
 		}
@@ -90,57 +108,57 @@ func runProtocol(local, remote string) {
 
 	// listen for messages
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", handler)
-	mux.HandleFunc("/debora", deboraHandler)
-	log.Println("Example protocol listening on", local)
+	mux.HandleFunc("/", peer.handler)
+	mux.HandleFunc("/debora", peer.deboraHandler)
+	fmt.Println("Example protocol listening on", local)
 	if err := http.ListenAndServe(local, mux); err != nil {
 		log.Fatal(err)
 	}
 }
 
 // handle pings and add peer to table
-func handler(w http.ResponseWriter, r *http.Request) {
+func (peer *Peer) handler(w http.ResponseWriter, r *http.Request) {
 	caller := r.RemoteAddr
 	listenAddr, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Println("received hi from: ", caller)
+	fmt.Println("received hi from: ", caller)
 	peers[caller] = string(listenAddr)
 }
 
 // handle debora call (initiate upgrade process)
 // ie. MsgDeboraTy
-func deboraHandler(w http.ResponseWriter, r *http.Request) {
+func (peer *Peer) deboraHandler(w http.ResponseWriter, r *http.Request) {
 	payload, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Println("got the call")
-	if err := debora.Call(payload); err != nil {
-		log.Println(err)
+	fmt.Println("got the call")
+	if err := debora.Call(peer.remote, payload); err != nil {
+		fmt.Println(err)
 	}
 
 }
 
 // called by the developer's DebMaster when triggered by `debora call`
 func broadcast(payload []byte) {
-	log.Println("Broadcast!")
+	fmt.Println("Broadcast!")
 	// broadcast MsgDeboraTy message with payload to all peers
 	for conAddr, listenAddr := range peers {
 		/*reqObj := debora.RequestObj{
 			Host: bootstrap,
 		}*/
 		//b, _ := json.Marshal(reqObj)
-		log.Printf("attempting broadcast to %s at %s\n", conAddr, listenAddr)
+		fmt.Printf("attempting broadcast to %s at %s\n", conAddr, listenAddr)
 		// send MsgDeboraTy
 		b, err := debora.RequestResponse(listenAddr, "debora", payload)
 		if err != nil {
-			log.Println(err)
+			fmt.Println(err)
 		}
-		log.Println("call response:", string(b))
+		fmt.Println("call response:", string(b))
 	}
 }
 
