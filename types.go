@@ -33,7 +33,7 @@ type RequestObj struct {
 	App  string   // process name
 	Src  string   // code path
 	Host string   // bootstrap node (developer's ip:port)
-	Tty  string   // terminal window for stdout
+	//	Tty  string   // terminal window for stdout
 
 	nonce []byte // random bytes
 }

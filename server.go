@@ -37,6 +37,40 @@ func (deb *Debora) kill(w http.ResponseWriter, r *http.Request) {
 	log.Fatal("Goodbye")
 }
 
+func (deb *Debora) start(w http.ResponseWriter, r *http.Request) {
+	// read the request, unmarshal json
+	p, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	var reqObj = RequestObj{}
+	err = json.Unmarshal(p, &reqObj)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	if len(reqObj.Args) == 0 {
+		http.Error(w, "Bad Request", http.StatusInternalServerError)
+	}
+	args := reqObj.Args
+	prgm := args[0]
+	if len(args) > 1 {
+		args = args[1:]
+	} else {
+		args = []string{}
+	}
+
+	cmd := exec.Command(prgm, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Start(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+}
+
 // Add a new process to debora
 func (deb *Debora) add(w http.ResponseWriter, r *http.Request) {
 	// read the request, unmarshal json

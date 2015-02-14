@@ -8,11 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/user"
 	"path"
 	"strconv"
-	"strings"
 	"syscall"
 )
 
@@ -136,70 +134,11 @@ func CheckValidProcess(pid int) (*os.Process, error) {
 	return proc, nil
 }
 
-// returns device path
-func getTty() string {
-	pid := os.Getpid()
-	cmd1 := exec.Command("ps")
-	cmd2 := exec.Command("grep", strconv.Itoa(pid))
-	cmd3 := exec.Command("grep", "-v", "grep")
-	cmd4 := exec.Command("awk", "{print $2}")
-	//cmd4 := exec.Command("awk")
-
-	cmd2.Stdin, _ = cmd1.StdoutPipe()
-	cmd3.Stdin, _ = cmd2.StdoutPipe()
-	//      cmd3.Stdout = os.Stdout
-	cmd4.Stdin, _ = cmd3.StdoutPipe()
-	buf := bytes.NewBuffer([]byte{})
-	cmd4.Stdout = buf
-	cmd4.Start()
-	cmd3.Start()
-	cmd2.Start()
-	cmd1.Run()
-	cmd2.Wait()
-	cmd3.Wait()
-	cmd4.Wait()
-
-	b := buf.Bytes()
-	b = b[:len(b)-1]
-
-	device := path.Join("/dev", strings.TrimSpace(string(b)))
-	return device
-}
-
-// every debora writes its port to a file
-// named after the app
-func resolveHost(app string) (string, error) {
-	var host string
+// Get host from file
+func ResolveHost(app string) (string, error) {
 	filename := path.Join(DeboraApps, app)
 	if _, err := os.Stat(filename); err != nil {
-		// if the file does not exist
-		// we have to find an available port
-		// and add the file
-		if fs, err := ioutil.ReadDir(DeboraApps); err != nil {
-			return "", err
-		} else {
-			portsTaken := make(map[string]bool)
-			// make map of all ports
-			for _, f := range fs {
-				if b, err := ioutil.ReadFile(f.Name()); err != nil {
-					return "", err
-				} else {
-					portsTaken[string(b)] = true
-				}
-			}
-			// find unused port
-			for i := 0; ; i++ {
-				host = strconv.Itoa(StartPort + i)
-				taken := portsTaken[host]
-				if !taken {
-					// we found an unused port
-					if err := ioutil.WriteFile(filename, []byte(host), 0600); err != nil {
-						return "", err
-					}
-					break
-				}
-			}
-		}
+		return "", nil
 	}
 
 	b, err := ioutil.ReadFile(filename)
@@ -209,4 +148,17 @@ func resolveHost(app string) (string, error) {
 
 	// the file should simply contain the port
 	return "localhost:" + string(b), nil
+}
+
+// Delete a file
+func CleanHosts(app string) error {
+	filename := path.Join(DeboraApps, app)
+	return os.Remove(filename)
+}
+
+// Write port to file
+func WritePort(app, port string) error {
+	filename := path.Join(DeboraApps, app)
+	p := []byte(port)
+	return ioutil.WriteFile(filename, p, 0600)
 }

@@ -3,9 +3,11 @@ package debora
 import (
 	"crypto/rand"
 	"encoding/json"
-	"log"
+	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
+	"path"
 	"time"
 )
 
@@ -17,7 +19,7 @@ import (
 func rpcIsDeboraRunning(host string) bool {
 	_, err := RequestResponse(host, "ping", nil)
 	if err != nil {
-		log.Println(err)
+		fmt.Println(err)
 		return false
 	}
 	return true
@@ -26,7 +28,8 @@ func rpcIsDeboraRunning(host string) bool {
 // start the debrora server
 // install if not present
 // block until she starts
-func startDebora(host, app string) error {
+// spawn the app
+func startDebora(app string, args []string) error {
 	// if debora is not installed, install her
 	//if _, err := os.Stat(DeboraBin); err != nil {
 	if err := installDebora(); err != nil {
@@ -41,8 +44,24 @@ func startDebora(host, app string) error {
 		return err
 	}
 	for {
-		time.Sleep(time.Second)
+		time.Sleep(time.Millisecond * 10)
+		p := path.Join(DeboraApps, app)
+		if _, err := os.Stat(p); err != nil {
+			// loop until the new deb process
+			// finds a port and writes it to file
+			continue
+		}
+
+		b, err := ioutil.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		host := "localhost:" + string(b)
+
 		if rpcIsDeboraRunning(host) {
+			if err := rpcStartApp(host, app, args); err != nil {
+				return err
+			}
 			break
 		}
 	}
@@ -51,16 +70,16 @@ func startDebora(host, app string) error {
 
 // install the debora binary (server)
 func installDebora() error {
-	log.Println("Installing debora ...")
+	fmt.Println("Installing debora ...")
 	cur, _ := os.Getwd()
 	if err := os.Chdir(DeboraCmdPath); err != nil {
 		return err
 	}
-	cmd := exec.Command("go", "get", "-d")
+	/*cmd := exec.Command("go", "get", "-d")
 	if err := cmd.Run(); err != nil {
 		return err
-	}
-	cmd = exec.Command("go", "install", "-v")
+	}*/
+	cmd := exec.Command("go", "install", "-v")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -70,15 +89,28 @@ func installDebora() error {
 	return nil
 }
 
+// tell debora to start a new instance of us to be the app process
+func rpcStartApp(host, app string, args []string) error {
+	reqObj := RequestObj{
+		Args: args,
+		App:  app,
+	}
+	b, err := json.Marshal(reqObj)
+	if err != nil {
+		return err
+	}
+	_, err = RequestResponse(host, "start", b)
+	return err
+}
+
 // add a process to debora
-func rpcAdd(host, key, name, src, tty string, pid int, args []string) error {
+func rpcAdd(host, key, name, src string, pid int, args []string) error {
 	reqObj := RequestObj{
 		Key:  key,
 		Pid:  pid,
 		Args: args,
 		App:  name,
 		Src:  src,
-		Tty:  tty,
 		Host: host,
 	}
 	b, err := json.Marshal(reqObj)
@@ -108,12 +140,12 @@ func rpcKnownDeb(host string, pid int) bool {
 	reqObj := RequestObj{Pid: pid}
 	b, err := json.Marshal(reqObj)
 	if err != nil {
-		log.Println(err)
+		fmt.Println(err)
 		return false
 	}
 	b, err = RequestResponse(host, "known", b)
 	if err != nil {
-		log.Println(err)
+		fmt.Println(err)
 		return false
 	}
 	if b == nil || len(b) == 0 {
@@ -143,7 +175,7 @@ func handshake(key, host string) (bool, error) {
 	}
 
 	// send encrypted nonce to developer
-	log.Println("sending nonce to dev:", host)
+	fmt.Println("sending nonce to dev:", host)
 	response, err := RequestResponse(host, "handshake", cipherText)
 	if err != nil {
 		return false, err

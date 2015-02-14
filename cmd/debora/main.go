@@ -59,7 +59,14 @@ func main() {
 }
 
 func cliKill(c *cli.Context) {
-	_, err := debora.RequestResponse(debora.DeboraHost, "kill", nil)
+	args := c.Args()
+	if len(args) == 0 {
+		log.Fatal("Must specify application name")
+	}
+	app := args[0]
+	host, err := debora.ResolveHost(app)
+	ifExit(err)
+	_, err = debora.RequestResponse(host, "kill", nil)
 	ifExit(err)
 }
 
