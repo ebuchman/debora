@@ -1,6 +1,7 @@
 package debora
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -94,6 +95,11 @@ func (deb *Debora) add(w http.ResponseWriter, r *http.Request) {
 	// TODO: validate key length
 
 	deb.deb = reqObj
+
+	// create log file
+	if _, err := os.Stat(deb.LogFile()); err != nil {
+		os.Create(deb.LogFile())
+	}
 }
 
 // Find out if a process is known to debora
@@ -137,6 +143,8 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	commitHash := reqObj.Commit
+
 	obj := deb.deb
 	if obj.Pid != pid {
 		http.Error(w, fmt.Sprintf("Unknown process id %d", pid), http.StatusInternalServerError)
@@ -159,31 +167,33 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logger.Println("the signal is authentic!")
-	logger.Println("upgrading the binary")
+	// anything after this point until the restart ought to
+	// be logged to file
+	deb.Logf(fmt.Sprintf("The signal from %s is authentic\n", "DEV"))
+	deb.Logf(fmt.Sprintf("Upgrading the binary to commit %s\n", commitHash))
 
 	// upgrade the binary
 	cur, _ := os.Getwd()
 	srcDir := path.Join(GoPath, "src", obj.Src)
 	if err := os.Chdir(srcDir); err != nil {
-		logger.Println("bad dir", err)
+		deb.Logf(fmt.Sprintln("Bad directory:", err))
 		http.Error(w, fmt.Sprintf("bad directory %s", srcDir), http.StatusInternalServerError)
 		return
 	}
-	if err := upgradeRepo(obj.Src); err != nil {
-		logger.Println("err on upgrade", err)
+	if err := deb.upgradeRepo(obj.Src, commitHash); err != nil {
+		deb.Logf(fmt.Sprintln("Upgrade error:", err))
 		http.Error(w, fmt.Sprintf("error on upgrade %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
-	if err := installRepo(obj.Src); err != nil {
-		logger.Println("install err", err)
+	if err := deb.installRepo(obj.Src); err != nil {
+		deb.Logf(fmt.Sprintln("Tnstall error:", err))
 		http.Error(w, fmt.Sprintf("error on repo install %s", err.Error()), http.StatusInternalServerError)
 		return
 	}
 
 	os.Chdir(cur)
 
-	logger.Println("terminating the process")
+	deb.Logln("Terminating the process")
 	// terminate the process
 	err = proc.Signal(os.Interrupt)
 	if err != nil {
@@ -193,7 +203,6 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 
 	//<-ch
 
-	logger.Println("restarting process")
 	// restart process
 	prgm := obj.Args[0]
 	var args []string
@@ -202,38 +211,56 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 	} else {
 		args = obj.Args[1:]
 	}
-	logger.Println("Program:", prgm)
-	logger.Println("args:", args)
+	deb.Logf(fmt.Sprintln("Restarting process:", prgm, args))
 	cmd := exec.Command(prgm, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		logger.Println("err on start:", err)
+		deb.Logf(fmt.Sprintln("Restart error:", err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	deb.Logln("Process successfully restarted")
 }
 
-func upgradeRepo(src string) error {
-	cmd := exec.Command("git", "stash")
+func (deb *Debora) upgradeRepo(src, hash string) error {
+	cmd := exec.Command("git", "diff-files", "--quiet")
 	if err := cmd.Run(); err != nil {
-		return err
+		errStr := "Working tree is dirty. Aborting upgrade."
+		deb.Logln(errStr)
+		return fmt.Errorf(errStr)
 	}
 
-	cmd = exec.Command("git", "pull", "origin", "master")
-	cmd.Stdout = os.Stdout
+	buf := new(bytes.Buffer)
+	cmd = exec.Command("git", "fetch", "-a", "origin")
+	cmd.Stdout = buf
+	cmd.Stderr = buf
 	if err := cmd.Run(); err != nil {
-		return err
+		return fmt.Errorf("Git fetch error: %s", err.Error())
+	}
+	deb.Logf(string(buf.Bytes()))
+
+	buf = new(bytes.Buffer)
+	cmd = exec.Command("git", "checkout", hash)
+	cmd.Stdout = buf
+	cmd.Stderr = buf
+	if err := cmd.Run(); err != nil {
+		deb.Logf(string(buf.Bytes()))
+		return fmt.Errorf("Git checkout error: %s", err.Error())
 	}
 	return nil
 }
 
-func installRepo(src string) error {
+func (deb *Debora) installRepo(src string) error {
+	buf := new(bytes.Buffer)
 	cmd := exec.Command("go", "install")
+	cmd.Stdout = buf
+	cmd.Stderr = buf
 	if err := cmd.Run(); err != nil {
 		return err
 	}
+	deb.Logf(string(buf.Bytes()))
 	return nil
 }
 

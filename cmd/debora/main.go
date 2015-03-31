@@ -38,6 +38,7 @@ func main() {
 				listenPortFlag,
 				remoteHostFlag,
 				remotePortFlag,
+				commitFlag,
 			},
 		},
 		cli.Command{
@@ -89,6 +90,11 @@ func cliCall(c *cli.Context) {
 	remotePort := c.Int("remote-port")
 	listenHost := c.String("listen-host")
 	listenPort := c.Int("listen-port")
+	commit := c.String("commit")
+
+	if commit == "" {
+		ifExit(fmt.Errorf("Commit hash must not be empty"))
+	}
 
 	args := c.Args()
 	if len(args) == 0 {
@@ -105,7 +111,8 @@ func cliCall(c *cli.Context) {
 
 	// we want the clients to know our address (port, really)
 	reqObj := debora.RequestObj{
-		Host: listen,
+		Host:   listen,
+		Commit: commit,
 	}
 	b, err := json.Marshal(reqObj)
 	ifExit(err)
@@ -164,6 +171,12 @@ var (
 		Name:  "remote-port",
 		Value: 56566,
 		Usage: "remote port to trigger broadcast of upgrade message",
+	}
+
+	commitFlag = cli.StringFlag{
+		Name:  "commit",
+		Value: "",
+		Usage: "commit hash to checkout",
 	}
 )
 

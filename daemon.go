@@ -103,14 +103,15 @@ func rpcStartApp(host, app string, args []string) error {
 }
 
 // add a process to debora
-func rpcAdd(host, key, name, src string, pid int, args []string) error {
+func rpcAdd(host, key, name, src, logfile string, pid int, args []string) error {
 	reqObj := RequestObj{
-		Key:  key,
-		Pid:  pid,
-		Args: args,
-		App:  name,
-		Src:  src,
-		Host: host,
+		Key:     key,
+		Pid:     pid,
+		Args:    args,
+		App:     name,
+		Src:     src,
+		Host:    host,
+		LogFile: logfile,
 	}
 	b, err := json.Marshal(reqObj)
 	if err != nil {
@@ -121,10 +122,11 @@ func rpcAdd(host, key, name, src string, pid int, args []string) error {
 }
 
 // initiate the debora call
-func rpcCall(host, remote string, pid int) error {
+func rpcCall(host, remote, commit string, pid int) error {
 	reqObj := RequestObj{
-		Pid:  pid,
-		Host: remote,
+		Pid:    pid,
+		Host:   remote,
+		Commit: commit,
 	}
 	b, err := json.Marshal(reqObj)
 	if err != nil {

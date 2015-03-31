@@ -43,7 +43,7 @@ func init() {
 	ARGS = append(ARGS, os.Args...)
 
 	// initialize the logger
-	logger = NewLogger(0, path.Base(ARGS[0]))
+	logger = NewLogger(1, path.Base(ARGS[0]))
 
 	// configure root dir location
 	deboraDir := os.Getenv("DEBORA_ROOT")

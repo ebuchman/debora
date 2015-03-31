@@ -20,6 +20,7 @@ var (
 var (
 	AppName   = "example"
 	SrcPath   = "github.com/ebuchman/example"
+	LogFile   = ".debora-log"
 	bootstrap = "0.0.0.0:8009" // developer's ip and port
 	me        = "0.0.0.0:8010" // my ip and port
 	CallPort  = 56565
@@ -53,7 +54,7 @@ func main() {
 	// Adds current process to debora
 	if *deboraM {
 		fmt.Printf("%d: Adding proc to debora\n", os.Getpid())
-		err := debora.Add(PublicKey, SrcPath, AppName)
+		err := debora.Add(PublicKey, SrcPath, AppName, LogFile)
 		ifExit(err)
 		local = me
 		remote = bootstrap

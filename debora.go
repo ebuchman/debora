@@ -25,15 +25,15 @@ var (
 )
 
 // Debra interface from caller is two functions:
-// 	Add(key, src, app string) starts a new debora process or add a key to an existing one
-//	Call(remote string, payload []byte) calls the debora server and has her take down this process, update it, and restart it
+// 	Add(key, src, app, logfile string) starts a new debora process or add a key to an existing one
+//	Call(remote string, payload []byte) calls the local debora server and has her take down this process, update it, and restart it
 
 // Add the current process to debora's control table
 // If the process was started by the user, no debora exists.
 //  	Start one, and have it launch the app proper
-// The calling app provides dev's public key, path to src, and app name
-// This function must be called as early as possible in the program
-func Add(key, src, app string) error {
+// The calling app provides dev's public key, path to src, app name, and a directory for debora logs
+// This function should be called as early as possible in the program
+func Add(key, src, app, logfile string) error {
 	host, err := ResolveHost(app)
 	if err != nil {
 		return err
@@ -61,7 +61,7 @@ func Add(key, src, app string) error {
 		if err := CleanHosts(app); err != nil {
 			return err
 		}
-		return Add(key, src, app)
+		return Add(key, src, app, logfile)
 	}
 
 	// set the global host variable for this process
@@ -73,7 +73,9 @@ func Add(key, src, app string) error {
 		return fmt.Errorf("The process has already been added to debora")
 	}
 
-	if err := rpcAdd(host, key, app, src, pid, ARGS); err != nil {
+	logger.Printf("The developers public key is %s", key)
+
+	if err := rpcAdd(host, key, app, src, logfile, pid, ARGS); err != nil {
 		return err
 	}
 
@@ -109,7 +111,7 @@ func Call(remoteHost string, payload []byte) error {
 
 	remoteHost = net.JoinHostPort(ip, port)
 
-	return rpcCall(localHost, remoteHost, pid)
+	return rpcCall(localHost, remoteHost, reqObj.Commit, pid)
 }
 
 /*
