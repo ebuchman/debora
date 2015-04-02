@@ -22,38 +22,57 @@ Debora requires three additions to an application's source code:
 
 Logging can be turned on by running `Logging(true)`. Log output is prefaced with the process id and app name.
 
-# Low level overview
+# Details
 
-To integrate Debora, add a new `MsgDeboraTy` to your P2P protocol which is presumably sent by the developer
-and initiates the upgrade sequence by calling `debora.Call(remote string, payload []byte)`, where remote is
-the address of the peer sending `MsgDeboraTy` and `payload` is the payload that came in the msg.
-This payload is originally crafted when the developer runs `debora call <appname>`, and should be left unmodified.
-The end result of `Call` is to kill the running process, upgrade it, and restart it.
+When an application is first started (call it PROC1), before there is an existing debora, the call to `Add(key, src, app)`
+will use an `exec.Command` to create a debora process (PROC2) and then hang forever. The hung process (PROC1) is our window into
+the process group within which all our stopping and restarting of processes will occur. The new debora (PROC2) will write her listen 
+port to a file, and use `exec.Command` to start a new instance of the application (PROC3), using the same command that started PROC1.
 
-When a client receives the message and runs `debora.Call(remote string, payload []byte)`, it will send a request to a local debora instance which will generate
-a random nonce, encrypt it with the developers public key, and send it to the developer's deborah (port is given in payload).
-If the response includes an HMAC signed with the random nonce, then the developer has been authenticated, and deborah will
-shutdown the appropriate process, upgrade it with a `git pull` and `go install`, and restart it.
+PROC3 is now our application proper (some distributed protocol, like a bittorent or blockchain client), and PROC2 is its debora. 
+PROC3 should function normally as if there were no debora about it, until it receives a special "upgrade" message from a peer.
+When the special "upgrade" message arrives, it runs `Call(remote, payload)`, which calls PROC2 (its debora) 
+and asks her to authenticate the payload. Debora does so interactively by sending the alleged developer a random nonce encrypted with his 
+public key. The message is authenticated if the alleged developer decrypts the nonce and returns HMAC(nonce, nonce).
 
-Note we make every effort to avoid having the users open any extra ports, so we use existing, possibly outbound, connections from the p2p layer.
+Once the signal is authenticated, debora switches to the appropriate repo (hard coded in the source) and runs `git fetch -a origin` and
+then `git checkout <hash>`, where `<hash>` is given in the payload. If the directory is dirty or any commands fail, the upgrade is aborted.
+Debora then runs `go install` to install the new binary.
+
+It is also possible to upgrade debora herself, by sending a payload with `upgrade\_debora:<hash>`. In that case, we switch to the debora 
+directory (also hard coded), fetch, checkout, install. Finally we run `go install` on the app too, so the new debora changes take effect.
+
+Since we want to also be able to upgrade debora, a new debora is created every time an application is upgraded. So if the upgrade and install is
+successful, a new debora is started (PROC4), and told to watch the process id of PROC3 (our application). Once PROC4 is up and watching PROC3,
+the old debora (PROC2) can kill PROC3 (originally her child), at which point PROC4 (new debora) will start a new instance of the application (PROC5), and PROC2
+(the old debora) will terminate herself. Finally, we are left with PROC1 (window), PROC4 (new debora), and PROC5 (new application), and the cycle repeats.
+
+
+# Notes 
+
+We make every effort to avoid having the users open any extra ports, so we use existing, possibly outbound, connections from the p2p layer.
 
 We do, however, require the developer to expose another port (for the authentication protocol, so as to not require more additions to the p2p protocol of the application)
+
+Soon, we will allow the developer to pass a more general authentication closure through Debora's api to allow for more complex authentication schemes.
+
+# HowTo
 
 As a developer, first create a new key pair for your app with `debora -keygen <appname>`. Take the public key and hardcode it into your application's souce code.
 
 In the beginning of the program, `debora.Add(key, src, app string)` should be called, where `key` is the public key generated in the previous step,
 `src` is the repository's path (eg. `github.com/ebuchman/debora`), and `app` is the name of your app (used as a reference later - must not be empty).
-`Add` will start the debora process on the client machine if it is not already running,
-and add the application's process id and provided key to the debora's table of processes. 
-Debora will now use this key to negotiate a shared secret for an HMAC, and will only accept messages 
-regarding this process if they are signed with the appropriate hmac key.
-This negotiation occurs every time `Call(remote string, payload []byte)` is called (ie. every time the special message is recieved in the p2p protocol)
+
+Add a new message to the p2p protocol which when received calls `Call(remote, payload)`, where `remote` is the address of the peer who delivered the message and `payload` is the payload of bytes.
 
 Now, include a `debora-dev` flag in your apps cli which when provided calls `debora.DebListenAndServe(appName string, port int, callFunc func(payload []byte))`, 
-where `callFunc` is responsible for broadcasting a `MsgDeboraTy` message containing the payload to all peers. Do not modify the payload.
-`DebListenAndServe` will start a little in-process http server which can be called with `debora -call <appname>`, 
-triggering the `DeboraMsgTy` broadcast and hence the upgrade protocol in all connected peers. 
-If a client attempts this, it will fail as they (presumably) do not have the appropriate private key to pass the authentication (hmac) step.
+where `callFunc` is responsible for broadcasting the special debora message (with payload) to all peers. Do not modify the payload.
+`DebListenAndServe` will start a little in-process http server which can be called with `debora call --commit <hash> <appname>`, 
+triggering the special debora message broadcast, and asking all peers to upgrade.
+
+If a client attempts to broadcast this message, it will fail as they (presumably) do not have the appropriate private key to pass the authentication (hmac) step.
+
+Furthermore, new code is only installed from a location that is hardcoded in the source.
 
 # Example
 
@@ -88,12 +107,14 @@ The two nodes will now ping eachother back and forth using a dead simple http pr
 Now, to initiate the upgrade procedure, open a new window (again, would be on the developer's machine), and run
 
 ```
-debora call --remote-port 56565 example
+debora call --remote-port 56565 --commit <hash> example
 ```
 
-This will ping the in-process debora server running with the app on the developer's machine, triggering it to broadcast the upgrade message to all connected peers.
+where `<hash>` is a valid commit from this repo.
+
+This will ping the in-process debora server running with the developer's version of the app, triggering it to broadcast the upgrade message to all connected peers.
 You should see the original node receive the broadcast, initiate the handshake to authenticate the caller, and then upgrade, terminate, and restart.
 
 And that's that!
 
-Welcome to Debora.
+Cheers, to Debora.
