@@ -2,6 +2,7 @@ package debora
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -198,4 +199,9 @@ func (l *Logger) Println(s ...interface{}) {
 		f := fmt.Sprintf("[ %d %s ] %s", l.pid, l.s, fmt.Sprint(s...))
 		fmt.Println(f)
 	}
+}
+
+func isHex(str string) bool {
+	_, err := hex.DecodeString(str)
+	return err == nil
 }

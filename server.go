@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strings"
 )
 
 /*
@@ -180,7 +181,7 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("bad directory %s", srcDir), http.StatusInternalServerError)
 		return
 	}
-	if err := deb.upgradeRepo(obj.Src, commitHash); err != nil {
+	if err := deb.upgradeCall(obj.Src, commitHash); err != nil {
 		deb.Logf(fmt.Sprintln("Upgrade error:", err))
 		http.Error(w, fmt.Sprintf("error on upgrade %s", err.Error()), http.StatusInternalServerError)
 		return
@@ -225,15 +226,9 @@ func (deb *Debora) call(w http.ResponseWriter, r *http.Request) {
 }
 
 func (deb *Debora) upgradeRepo(src, hash string) error {
-	cmd := exec.Command("git", "diff-files", "--quiet")
-	if err := cmd.Run(); err != nil {
-		errStr := "Working tree is dirty. Aborting upgrade."
-		deb.Logln(errStr)
-		return fmt.Errorf(errStr)
-	}
-
+	// fetch all remote updates
 	buf := new(bytes.Buffer)
-	cmd = exec.Command("git", "fetch", "-a", "origin")
+	cmd := exec.Command("git", "fetch", "-a", "origin")
 	cmd.Stdout = buf
 	cmd.Stderr = buf
 	if err := cmd.Run(); err != nil {
@@ -241,6 +236,7 @@ func (deb *Debora) upgradeRepo(src, hash string) error {
 	}
 	deb.Logf(string(buf.Bytes()))
 
+	// chceckout the provided hash
 	buf = new(bytes.Buffer)
 	cmd = exec.Command("git", "checkout", hash)
 	cmd.Stdout = buf
@@ -250,6 +246,36 @@ func (deb *Debora) upgradeRepo(src, hash string) error {
 		return fmt.Errorf("Git checkout error: %s", err.Error())
 	}
 	return nil
+}
+
+func (deb *Debora) upgradeCall(src, hash string) error {
+	// if the directory is dirty, abort upgrade
+	cmd := exec.Command("git", "diff-files", "--quiet")
+	if err := cmd.Run(); err != nil {
+		errStr := "Working tree is dirty. Aborting upgrade."
+		deb.Logln(errStr)
+		return fmt.Errorf(errStr)
+	}
+
+	// the hash may contain more information
+	spl := strings.Split(hash, ":")
+	switch len(spl) {
+	case 1:
+		if !isHex(hash) {
+			return fmt.Errorf("Provided hash is not valid hex: %s", hash)
+		}
+		// its just a hash, git fetch and checkout
+		return deb.upgradeRepo(src, hash)
+	case 2:
+		// its a directive and a hash
+		cmd := spl[0]
+		hash := spl[1]
+		// for now the only other thing we do is upgrade debora
+		_ = cmd
+		return deb.upgradeRepo("github.com/ebuchman/debora", hash)
+	default:
+		return fmt.Errorf("Unknown upgrade directive: %s", hash)
+	}
 }
 
 func (deb *Debora) installRepo(src string) error {

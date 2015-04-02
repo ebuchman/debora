@@ -3,6 +3,7 @@ package debora
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -129,6 +130,7 @@ func Call(remoteHost string, payload []byte) error {
 // This function blocks.
 // New port is granted by the operating system
 func DeboraListenAndServe(app string) error {
+
 	deb := new(Debora)
 
 	mux := http.NewServeMux()
