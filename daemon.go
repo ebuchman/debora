@@ -3,7 +3,6 @@ package debora
 import (
 	"crypto/rand"
 	"encoding/json"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -28,40 +27,78 @@ func rpcIsDeboraRunning(host string) bool {
 // install if not present
 // block until she starts
 // spawn the app
-func startDebora(app string, args []string) error {
+func startDebora(app string, args []string, appPid int) error {
 	// if debora is not installed, install her
-	//if _, err := os.Stat(DeboraBin); err != nil {
-	if err := installDebora(); err != nil {
-		return err
+	if _, err := os.Stat(DeboraBin); err != nil {
+		if err := installDebora(); err != nil {
+			return err
+		}
 	}
-	//}
 
+	// start a new debora and give it the app's name
 	cmd := exec.Command(DeboraBin, "run", app)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+
+	appDebPath := path.Join(DeboraApps, app)
+
+	// a file containing a listening port is evidence
+	// of an existing debora. If this is a new app instance,
+	// that file won't exist. but if it's a restart, then we
+	// need to make sure we don't talk to ourselves, but
+	// to the new debora after it overwrites the port file
+	listeningPort := ""
+	if _, err := os.Stat(appDebPath); err == nil {
+		b, err := ReadPort(app)
+		if err != nil {
+			return err
+		}
+		listeningPort = string(b)
+	}
+
+	// wait for debora to come up
+	// TODO: if she won't start after so long, exit gracefully
 	for {
 		time.Sleep(time.Millisecond * 10)
-		p := path.Join(DeboraApps, app)
-		if _, err := os.Stat(p); err != nil {
+		if _, err := os.Stat(appDebPath); err != nil {
 			// loop until the new deb process
 			// finds a port and writes it to file
 			continue
 		}
 
-		b, err := ioutil.ReadFile(p)
+		b, err := ReadPort(app)
 		if err != nil {
 			return err
 		}
-		host := "localhost:" + string(b)
 
+		// if the file still contains our listening port,
+		// loop again
+		if listeningPort == b {
+			continue
+		}
+
+		// the new debora should be up, this is its address
+		host := "localhost:" + b
 		if rpcIsDeboraRunning(host) {
-			if err := rpcStartApp(host, app, args); err != nil {
-				return err
+			if appPid < 0 {
+				// if the app is being started for the first time,
+				// have the new debora process start it
+				if err := rpcStartApp(host, app, args); err != nil {
+					return err
+				}
+				break
+			} else {
+				// the app is being restarted, so tell the new debora process
+				// to kill and then restart it,
+				// and make sure it reports back to us so we can die in peace
+				if err := rpcRestartApp(host, app, args, appPid); err != nil {
+					return err
+				}
+				break
 			}
-			break
 		}
 	}
 	return nil
@@ -99,6 +136,21 @@ func rpcStartApp(host, app string, args []string) error {
 		return err
 	}
 	_, err = RequestResponse(host, "start", b)
+	return err
+}
+
+// tell debora to terminate and restart the app process
+func rpcRestartApp(host, app string, args []string, appPid int) error {
+	reqObj := RequestObj{
+		Args: args,
+		App:  app,
+		Pid:  appPid,
+	}
+	b, err := json.Marshal(reqObj)
+	if err != nil {
+		return err
+	}
+	_, err = RequestResponse(host, "restart", b)
 	return err
 }
 

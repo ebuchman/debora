@@ -165,6 +165,17 @@ func CleanHosts(app string) error {
 	return os.Remove(filename)
 }
 
+// Read port from file
+func ReadPort(app string) (string, error) {
+	filename := path.Join(DeboraApps, app)
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return "", err
+	}
+	// TODO
+	return string(b), nil
+}
+
 // Write port to file
 func WritePort(app, port string) error {
 	filename := path.Join(DeboraApps, app)

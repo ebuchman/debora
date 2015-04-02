@@ -3,7 +3,6 @@ package debora
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -15,6 +14,7 @@ var (
 	// important paths
 	HomeDir       = homeDir()
 	GoPath        = os.Getenv("GOPATH")
+	GoSrc         = path.Join(GoPath, "src")
 	DeboraRoot    = path.Join(HomeDir, ".debora")
 	DeboraApps    = path.Join(DeboraRoot, "apps")
 	DeboraConfig  = path.Join(DeboraRoot, "config.json")
@@ -26,8 +26,10 @@ var (
 )
 
 // Debra interface from caller is two functions:
-// 	Add(key, src, app, logfile string) starts a new debora process or add a key to an existing one
-//	Call(remote string, payload []byte) calls the local debora server and has her take down this process, update it, and restart it
+// 	Add(key, src, app, logfile string)
+//		starts a new debora process or add a key to an existing one
+//	Call(remote string, payload []byte)
+//		calls the local debora server and has her take down this process, update it, and restart it
 
 // Add the current process to debora's control table
 // If the process was started by the user, no debora exists.
@@ -42,16 +44,16 @@ func Add(key, src, app, logfile string) error {
 
 	logger.Printf("Resolve host for %s: %s\n", app, host)
 
-	// if there's no debora for this app
-	// start her and block forever
+	// if this is a new instance of the app
+	// and there is no current debora,
+	// start her and block forever.
 	// debora will start a new instance of the app that doesn't block
 	if host == "" {
-		if err := startDebora(app, ARGS); err != nil {
+		if err := startDebora(app, ARGS, -1); err != nil {
 			return err
 		}
 		logger.Println("We started deb and she's running. Block forever")
-		ch := make(chan int)
-		<-ch
+		<-make(chan int)
 		return nil
 	}
 
@@ -129,6 +131,8 @@ func Call(remoteHost string, payload []byte) error {
 // and never by another application.
 // This function blocks.
 // New port is granted by the operating system
+// If a debora is already running for this application,
+// this new debora will take over
 func DeboraListenAndServe(app string) error {
 
 	deb := new(Debora)
@@ -137,6 +141,7 @@ func DeboraListenAndServe(app string) error {
 	mux.HandleFunc("/ping", deb.ping)
 	mux.HandleFunc("/kill", deb.kill)
 	mux.HandleFunc("/start", deb.start)
+	mux.HandleFunc("/restart", deb.restart)
 	mux.HandleFunc("/add", deb.add)
 	mux.HandleFunc("/call", deb.call)
 	mux.HandleFunc("/known", deb.known)

@@ -28,16 +28,15 @@ type DeveloperDebora struct {
 // The same object is used for all communication
 // and for representing processes/apps.
 // So most of it is usually empty.
-// TODO: don't encode empty fields ?
 type RequestObj struct {
-	Key     string   // hex encoded DER public key
-	Pid     int      // process id
-	Args    []string // command line call that started the process
-	App     string   // process name
-	Src     string   // install dir (cd to this before running git fetch. run `go install` from here)
-	Commit  string   // commit hash to fetch (this can also be other trigger words, eg. to update debora herself)
-	Host    string   // bootstrap node (developer's ip:port)
-	LogFile string   // directory to store upgrade logs
+	Key     string   `json:",omitempty"` // hex encoded DER public key
+	Pid     int      `json:",omitempty"` // process id
+	Args    []string `json:",omitempty"` // command line call that started the process
+	App     string   `json:",omitempty"` // process name
+	Src     string   `json:",omitempty"` // install dir (cd to this before running git fetch. run `go install` from here)
+	Commit  string   `json:",omitempty"` // commit hash to fetch (this can also be other trigger words, eg. to update debora herself)
+	Host    string   `json:",omitempty"` // bootstrap node (developer's ip:port)
+	LogFile string   `json:",omitempty"` // directory to store upgrade logs
 }
 
 type Config struct {
